@@ -1,0 +1,10 @@
+{
+  "main": "dist/main.js",
+  "branch": "default",
+  "sim": false,
+  "server": {
+    "host": "screeps.com",
+    "port": 443,
+    "secure": true
+  }
+}

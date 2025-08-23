@@ -1,0 +1,29 @@
+{
+  "name": "cline-ai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node --target=es2020",
+    "build:watch": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node --target=es2020 --watch",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "clean": "rimraf dist",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/screeps": "^3.3.8",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
+    "esbuild": "^0.25.9",
+    "eslint": "^9.34.0",
+    "prettier": "^3.6.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
