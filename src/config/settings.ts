@@ -70,6 +70,25 @@ export const Settings = {
     logRoomUpdates: false,     // Log room memory updates
   },
 
+  // Planning system settings
+  planning: {
+    enabled: true,
+    planningCadence: 50,           // Ticks between planning runs
+    constructionCadence: 10,       // Ticks between construction site management
+    maxConstructionSites: 5,       // Maximum construction sites per room
+    trafficAnalysisEnabled: true,
+    trafficDataTTL: 1000,         // Ticks to keep traffic data
+    layoutAnalysisTTL: 5000,      // Ticks to keep layout analysis
+    roadPlanningEnabled: true,
+    buildingPlanningEnabled: true,
+    useTemplates: true,           // Use predefined layout templates
+    useDynamicPlacement: true,    // Use dynamic building placement
+    minTrafficForRoad: 5,         // Minimum traffic count to justify a road
+    roadPriorityThreshold: 10,    // Traffic score threshold for high priority roads
+    minTrafficDataPoints: 20,     // Minimum traffic data points before road planning
+    constructionSiteMaxAge: 1500, // Maximum age for idle construction sites
+  },
+
   // Game stance and behavior
   stance: 'peace' as 'peace' | 'alert' | 'war',
 

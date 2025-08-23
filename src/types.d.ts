@@ -15,6 +15,13 @@ interface RoomMemory {
   spawnIds: Id<StructureSpawn>[];
   lastUpdated: number;
   rcl: number;
+  plan?: RoomPlan;
+  trafficData?: TrafficData;
+  layoutAnalysis?: {
+    terrain: TerrainAnalysis;
+    keyPositions: KeyPositions;
+    lastAnalyzed: number;
+  };
 }
 
 interface SourceMemory {
@@ -45,4 +52,72 @@ declare namespace NodeJS {
 interface IKernel {
   run(): void;
   // Add more kernel methods as needed
+}
+
+// -- Planning System Types -- //
+
+interface RoomPlan {
+  roomName: string;
+  rcl: number;
+  lastUpdated: number;
+  buildings: PlannedBuilding[];
+  roads: PlannedRoad[];
+  status: 'planning' | 'ready' | 'building' | 'complete';
+  priority: number;
+}
+
+interface PlannedBuilding {
+  structureType: BuildableStructureConstant;
+  pos: RoomPosition;
+  priority: number;
+  rclRequired: number;
+  placed: boolean;
+  constructionSiteId?: Id<ConstructionSite>;
+  reason: string; // Why this position was chosen
+}
+
+interface PlannedRoad {
+  pos: RoomPosition;
+  priority: number;
+  trafficScore: number;
+  placed: boolean;
+  constructionSiteId?: Id<ConstructionSite>;
+  pathType: 'source' | 'controller' | 'mineral' | 'exit' | 'internal';
+}
+
+interface TrafficData {
+  [key: string]: { // position key "x,y"
+    count: number;
+    lastSeen: number;
+    creepTypes: string[];
+  };
+}
+
+interface LayoutTemplate {
+  name: string;
+  rcl: number;
+  buildings: TemplateBuilding[];
+  centerOffset: { x: number; y: number };
+}
+
+interface TemplateBuilding {
+  structureType: BuildableStructureConstant;
+  offset: { x: number; y: number };
+  priority: number;
+}
+
+interface TerrainAnalysis {
+  openSpaces: RoomPosition[];
+  walls: RoomPosition[];
+  swamps: RoomPosition[];
+  exits: RoomPosition[];
+  centralArea: RoomPosition;
+}
+
+interface KeyPositions {
+  spawn: RoomPosition[];
+  sources: RoomPosition[];
+  controller: RoomPosition | undefined;
+  mineral: RoomPosition | undefined;
+  exits: RoomPosition[];
 }

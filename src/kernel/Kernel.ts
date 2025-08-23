@@ -1,4 +1,5 @@
 import { Logger } from '../utils/Logger';
+import { Settings } from '../config/settings';
 
 export class Kernel implements IKernel {
   private managers: Array<{ name: string; run: () => void }> = [];
@@ -21,6 +22,11 @@ export class Kernel implements IKernel {
       // Periodic logger cleanup (every 100 ticks)
       if (Game.time % 100 === 0) {
         Logger.cleanup();
+      }
+
+      // Periodic planning system cleanup (every 500 ticks)
+      if (Game.time % 500 === 0) {
+        this.cleanupPlanningData();
       }
 
       // Run all registered managers
@@ -101,6 +107,88 @@ export class Kernel implements IKernel {
       if (!(name in Game.flags)) {
         delete Memory.flags[name];
       }
+    }
+  }
+
+  private cleanupPlanningData(): void {
+    if (!Settings.planning.enabled) return;
+
+    try {
+      // Clean up old traffic data and layout analysis for all rooms
+      for (const roomName in Memory.rooms) {
+        const roomMemory = Memory.rooms[roomName];
+        if (!roomMemory) continue;
+
+        // Clean up old traffic data
+        if (roomMemory.trafficData) {
+          const trafficTTL = Settings.planning.trafficDataTTL;
+          for (const posKey in roomMemory.trafficData) {
+            const data = roomMemory.trafficData[posKey];
+            if (data && Game.time - data.lastSeen > trafficTTL) {
+              delete roomMemory.trafficData[posKey];
+            }
+          }
+        }
+
+        // Clean up old layout analysis
+        if (roomMemory.layoutAnalysis) {
+          const layoutTTL = Settings.planning.layoutAnalysisTTL;
+          if (Game.time - roomMemory.layoutAnalysis.lastAnalyzed > layoutTTL) {
+            delete roomMemory.layoutAnalysis;
+            Logger.debug(`Kernel: Cleaned up old layout analysis for room ${roomName}`);
+          }
+        }
+
+        // Clean up completed construction sites from plans
+        if (roomMemory.plan) {
+          const room = Game.rooms[roomName];
+          if (room) {
+            // Update building placement status
+            roomMemory.plan.buildings.forEach(building => {
+              if (building.placed && building.constructionSiteId) {
+                const site = Game.getObjectById(building.constructionSiteId);
+                if (!site) {
+                  // Construction site no longer exists, check if structure was built
+                  const structures = building.pos.lookFor(LOOK_STRUCTURES);
+                  const hasStructure = structures.some(s => s.structureType === building.structureType);
+                  if (hasStructure) {
+                    // Structure was successfully built
+                    delete building.constructionSiteId;
+                  } else {
+                    // Construction site was removed, mark as not placed
+                    building.placed = false;
+                    delete building.constructionSiteId;
+                  }
+                }
+              }
+            });
+
+            // Update road placement status
+            roomMemory.plan.roads.forEach(road => {
+              if (road.placed && road.constructionSiteId) {
+                const site = Game.getObjectById(road.constructionSiteId);
+                if (!site) {
+                  // Construction site no longer exists, check if road was built
+                  const structures = road.pos.lookFor(LOOK_STRUCTURES);
+                  const hasRoad = structures.some(s => s.structureType === STRUCTURE_ROAD);
+                  if (hasRoad) {
+                    // Road was successfully built
+                    delete road.constructionSiteId;
+                  } else {
+                    // Construction site was removed, mark as not placed
+                    road.placed = false;
+                    delete road.constructionSiteId;
+                  }
+                }
+              }
+            });
+          }
+        }
+      }
+
+      Logger.debug('Kernel: Completed planning data cleanup');
+    } catch (error) {
+      Logger.error(`Kernel: Error during planning data cleanup: ${error}`);
     }
   }
 

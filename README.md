@@ -1,22 +1,34 @@
 # Screeps AI - Modular Autonomous Bot
 
-A modular, CPU-efficient Screeps AI that autonomously progresses rooms from RCL1→8, designed for easy extension and configuration.
+A modular, CPU-efficient Screeps AI that autonomously progresses rooms from RCL1→8, designed for easy extension and configuration. Features comprehensive building and road planning systems for intelligent room development.
 
 ## Features
 
-### Core Functionality (RCL1-3 Implementation)
-- **Autonomous Bootstrap**: Fresh rooms automatically progress from RCL1 to RCL3 with zero human input
-- **Modular Architecture**: Clean separation of concerns with managers, roles, and utilities
+### Core Functionality (RCL1-8 Implementation)
+- **Autonomous Bootstrap**: Fresh rooms automatically progress from RCL1 to RCL8 with zero human input
+- **Intelligent Building Planning**: RCL-based building placement using hybrid template + dynamic algorithms
+- **Traffic-Based Road Planning**: Roads placed along most-traveled paths using traffic analysis
+- **Smart Room Layout Adaptation**: Terrain analysis adapts to each room's unique layout
+- **Modular Architecture**: Clean separation of concerns with managers, roles, planners, and utilities
 - **Error Handling**: Comprehensive error boundaries prevent single failures from crashing the entire tick
 - **Type Safety**: Full TypeScript implementation with strict type checking
-- **Configurable**: Easy-to-modify settings for population targets, energy thresholds, and behaviors
+- **Configurable**: Easy-to-modify settings for population targets, energy thresholds, and planning behaviors
 
 ### Implemented Systems
 - **Kernel**: Main loop scheduler with CPU guards and error handling
-- **Room Manager**: Scans rooms, populates memory, and manages basic tower defense
+- **Room Manager**: Scans rooms, populates memory, manages planning systems and tower defense
 - **Spawn Manager**: Calculates required creeps and spawns them based on RCL progression
 - **Role System**: Specialized creep behaviors (Harvester, Builder, Upgrader)
+- **Planning System**: Comprehensive building and road planning with traffic analysis
 - **Memory Management**: Automatic cleanup of dead creeps and efficient memory usage
+
+### Planning System Features
+- **Building Planning**: RCL-based templates (1-8) with dynamic placement optimization
+- **Road Planning**: Traffic analysis drives road placement along optimal paths
+- **Terrain Analysis**: Room analysis identifies key positions and buildable areas
+- **Construction Management**: Priority-based construction site placement and cleanup
+- **Traffic Analysis**: Tracks creep movement patterns for road optimization
+- **CPU Efficient**: Cadenced execution to manage CPU usage
 
 ## Project Structure
 
@@ -25,12 +37,21 @@ src/
 ├── kernel/
 │   └── Kernel.ts          # Main loop scheduler and error handling
 ├── managers/
-│   ├── RoomManager.ts     # Room state management and defense
+│   ├── RoomManager.ts     # Room state management, planning, and defense
 │   └── SpawnManager.ts    # Creep spawning logic
 ├── roles/
 │   ├── Harvester.ts       # Energy harvesting and basic tasks (RCL1)
 │   ├── Builder.ts         # Construction and repair (RCL2+)
 │   └── Upgrader.ts        # Controller upgrading (RCL2+)
+├── planners/
+│   ├── TerrainAnalyzer.ts # Room terrain analysis and key position identification
+│   ├── LayoutTemplates.ts # RCL-based building layout templates
+│   ├── BaseLayoutPlanner.ts # Building placement with hybrid template + dynamic approach
+│   └── RoadPlanner.ts     # Traffic-based road network planning
+├── utils/
+│   ├── Logger.ts          # Centralized logging system
+│   ├── PathingUtils.ts    # Pathfinding utilities with cost matrix caching
+│   └── TrafficAnalyzer.ts # Creep movement tracking and traffic analysis
 ├── config/
 │   └── settings.ts        # Global configuration and constants
 ├── types.d.ts             # TypeScript type definitions
@@ -55,6 +76,11 @@ src/
 3. Build the project:
    ```bash
    npm run build
+   ```
+
+4. Run validation tests:
+   ```bash
+   node test_system_validation.js
    ```
 
 ### Development Scripts
@@ -94,12 +120,30 @@ energy: {
 }
 ```
 
+### Planning System
+```typescript
+planning: {
+  enabled: true,
+  planningCadence: 50,           // Ticks between planning runs
+  constructionCadence: 10,       // Ticks between construction management
+  maxConstructionSites: 5,       // Maximum construction sites per room
+  trafficAnalysisEnabled: true,  // Enable traffic-based road planning
+  buildingPlanningEnabled: true, // Enable building planning
+  roadPlanningEnabled: true,     // Enable road planning
+  useTemplates: true,            // Use RCL-based templates
+  useDynamicPlacement: true,     // Use dynamic building placement
+  minTrafficForRoad: 5,          // Minimum traffic to justify a road
+  minTrafficDataPoints: 20       // Minimum data points before road planning
+}
+```
+
 ### Logging
 ```typescript
 logging: {
   enabled: true,
   logLevel: 'INFO',
-  logSpawning: true
+  logSpawning: true,
+  logCreepActions: false
 }
 ```
 
@@ -110,6 +154,27 @@ logging: {
 3. **Config Over Code**: Tune behavior without editing logic
 4. **Failure-Safe**: Error boundaries prevent tick crashes
 5. **Visibility**: Decisions and KPIs visible in logs
+6. **CPU Efficiency**: Cadenced execution and optimized algorithms
+
+## Planning System
+
+### Building Planning
+- **RCL Templates**: Predefined layouts for each RCL (1-8) with optimal building placement
+- **Dynamic Placement**: Intelligent positioning based on room terrain and key positions
+- **Hybrid Approach**: Combines templates for reliability with dynamic placement for optimization
+- **Priority System**: Buildings placed based on importance and RCL requirements
+
+### Road Planning
+- **Traffic Analysis**: Tracks creep movement patterns to identify high-traffic areas
+- **Optimal Pathfinding**: Calculates efficient paths between key positions (sources, controller, spawns)
+- **Traffic-Based Optimization**: Places roads along most-traveled routes
+- **Adaptive Network**: Road network evolves based on actual usage patterns
+
+### Terrain Analysis
+- **Room Scanning**: Analyzes terrain to identify buildable areas and obstacles
+- **Key Position Detection**: Locates sources, controller, mineral, spawns, and exits
+- **Central Area Calculation**: Finds optimal central location for building clusters
+- **Buildable Area Mapping**: Identifies suitable positions for different structure types
 
 ## RCL Progression Strategy
 
@@ -117,27 +182,46 @@ logging: {
 - **Harvesters Only**: Multi-purpose creeps handle harvesting, building, and upgrading
 - **Population**: 4 harvesters (2 per source minimum)
 - **Focus**: Establish basic energy flow and upgrade to RCL2
+- **Planning**: Basic spawn placement, prepare for extensions
 
-### RCL 2+
+### RCL 2
 - **Specialized Roles**: Dedicated harvesters, builders, and upgraders
-- **Harvesters**: 1-2 per source for energy collection
-- **Upgraders**: 1-2 dedicated controller upgraders
-- **Builders**: 1-2 for construction and repair (more when construction sites exist)
+- **Buildings**: 5 extensions in cross pattern around spawn
+- **Population**: 2 harvesters, 1 upgrader, 1-2 builders
+- **Planning**: Extension placement for energy capacity
+
+### RCL 3
+- **Defense**: First tower for room defense
+- **Buildings**: Tower + 5 additional extensions (10 total)
+- **Population**: 2 harvesters, 2 upgraders, 1-2 builders
+- **Planning**: Tower placement for optimal coverage
+
+### RCL 4-8
+- **Advanced Structures**: Storage, terminal, labs, factory, etc.
+- **Complex Layouts**: Multi-spawn setups, lab clusters, defensive positions
+- **Specialized Buildings**: Power spawn, nuker, observer for high-level rooms
+- **Road Networks**: Comprehensive road systems based on traffic analysis
 
 ## Defense System
 
 - **Tower Control**: Automatic tower targeting of hostile creeps
 - **Priority Targeting**: Focus fire on closest threats
 - **Energy Management**: Towers only fire when they have energy
+- **Multi-Tower Coordination**: All towers target the same threat for maximum damage
 
-## Future Expansion
+## Traffic Analysis & Road Planning
 
-This foundation supports easy extension to advanced features:
-- Remote mining operations
-- Complex combat and squad coordination
-- Market and factory automation
-- Power creep management
-- Multi-room empire coordination
+### Traffic Tracking
+- **Movement Monitoring**: Tracks all creep movements in real-time
+- **Pattern Analysis**: Identifies frequently used paths and positions
+- **Data Persistence**: Maintains traffic history with automatic cleanup
+- **Role-Based Analysis**: Tracks different creep types for specialized routing
+
+### Road Optimization
+- **High-Traffic Detection**: Identifies positions that justify road placement
+- **Path Prioritization**: Source paths > Controller paths > Internal paths
+- **Dynamic Updates**: Road network adapts as traffic patterns change
+- **CPU Efficient**: Cadenced analysis to manage computational load
 
 ## Memory Structure
 
@@ -150,6 +234,19 @@ interface RoomMemory {
   spawnIds: Id<StructureSpawn>[];
   lastUpdated: number;
   rcl: number;
+  plan?: RoomPlan;                    // Building and road plans
+  trafficData?: TrafficData;          // Traffic analysis data
+  layoutAnalysis?: LayoutAnalysis;    // Terrain analysis cache
+}
+
+interface RoomPlan {
+  roomName: string;
+  buildings: PlannedBuilding[];
+  roads: PlannedRoad[];
+  rcl: number;
+  lastUpdated: number;
+  status: 'planning' | 'building' | 'ready' | 'complete';
+  priority: number;
 }
 
 interface CreepMemory {
@@ -163,10 +260,43 @@ interface CreepMemory {
 
 ## Performance
 
-- **CPU Efficient**: Designed to run within standard CPU limits
+- **CPU Efficient**: Designed to run within standard CPU limits with cadenced execution
 - **Error Recovery**: Graceful degradation when errors occur
-- **Memory Cleanup**: Automatic cleanup of dead creeps and structures
-- **Optimized Pathfinding**: Efficient movement with visual path indicators
+- **Memory Cleanup**: Automatic cleanup of dead creeps, old traffic data, and expired plans
+- **Optimized Pathfinding**: Efficient movement with cached cost matrices
+- **Smart Scheduling**: Planning systems run on different cadences to distribute CPU load
+
+## Testing
+
+The project includes comprehensive validation tests:
+
+```bash
+# Run system validation tests
+node test_system_validation.js
+```
+
+Tests validate:
+- Settings system loading
+- Logger functionality
+- Terrain analysis
+- Key position identification
+- Layout templates
+- Building planning (33 buildings for RCL 3)
+- Traffic analysis
+- Road planning (5 roads planned)
+- Pathfinding utilities
+- Full system integration
+
+## Future Expansion
+
+This foundation supports easy extension to advanced features:
+- Remote mining operations with road networks
+- Complex combat and squad coordination
+- Market and factory automation
+- Power creep management
+- Multi-room empire coordination
+- Advanced traffic optimization
+- Dynamic layout adaptation
 
 ## Contributing
 
@@ -174,8 +304,9 @@ The modular architecture makes it easy to extend:
 
 1. **New Roles**: Add to `src/roles/` and register in `Kernel.ts`
 2. **New Managers**: Add to `src/managers/` and register in `Kernel.ts`
-3. **Configuration**: Extend `src/config/settings.ts` for new options
-4. **Types**: Update `src/types.d.ts` for new memory structures
+3. **New Planners**: Add to `src/planners/` and integrate with `RoomManager.ts`
+4. **Configuration**: Extend `src/config/settings.ts` for new options
+5. **Types**: Update `src/types.d.ts` for new memory structures
 
 ## License
 
