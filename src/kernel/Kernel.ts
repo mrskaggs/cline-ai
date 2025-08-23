@@ -3,6 +3,8 @@ import { Logger } from '../utils/Logger';
 export class Kernel implements IKernel {
   private managers: Array<{ name: string; run: () => void }> = [];
   private initialized: boolean = false;
+  private roomManager: any;
+  private spawnManager: any;
 
   constructor() {
     this.load();
@@ -35,21 +37,22 @@ export class Kernel implements IKernel {
   }
 
   private load(): void {
-    // Only log kernel loading once per global reset
+    // Only initialize once per global reset
     if (!this.initialized) {
       Logger.info('Loading kernel...', 'Kernel');
+      
+      // Register managers
+      const { RoomManager } = require('../managers/RoomManager');
+      const { SpawnManager } = require('../managers/SpawnManager');
+      
+      this.roomManager = new RoomManager();
+      this.spawnManager = new SpawnManager();
+      
+      this.registerManager('RoomManager', () => this.roomManager.run());
+      this.registerManager('SpawnManager', () => this.spawnManager.run());
+      
       this.initialized = true;
     }
-    
-    // Register managers
-    const { RoomManager } = require('../managers/RoomManager');
-    const { SpawnManager } = require('../managers/SpawnManager');
-    
-    const roomManager = new RoomManager();
-    const spawnManager = new SpawnManager();
-    
-    this.registerManager('RoomManager', () => roomManager.run());
-    this.registerManager('SpawnManager', () => spawnManager.run());
   }
 
   private initializeMemory(): void {

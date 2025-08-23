@@ -107,11 +107,11 @@ var init_settings = __esm({
       // Logging and debugging
       logging: {
         enabled: true,
-        logLevel: "WARN",
+        logLevel: "INFO",
         // DEBUG, INFO, WARN, ERROR
         logCreepActions: false,
         // Log individual creep actions
-        logSpawning: false,
+        logSpawning: true,
         // Log spawning decisions
         logRoomUpdates: false
         // Log room memory updates
@@ -769,14 +769,14 @@ var Kernel = class {
   load() {
     if (!this.initialized) {
       Logger.info("Loading kernel...", "Kernel");
+      const { RoomManager: RoomManager2 } = (init_RoomManager(), __toCommonJS(RoomManager_exports));
+      const { SpawnManager: SpawnManager2 } = (init_SpawnManager(), __toCommonJS(SpawnManager_exports));
+      this.roomManager = new RoomManager2();
+      this.spawnManager = new SpawnManager2();
+      this.registerManager("RoomManager", () => this.roomManager.run());
+      this.registerManager("SpawnManager", () => this.spawnManager.run());
       this.initialized = true;
     }
-    const { RoomManager: RoomManager2 } = (init_RoomManager(), __toCommonJS(RoomManager_exports));
-    const { SpawnManager: SpawnManager2 } = (init_SpawnManager(), __toCommonJS(SpawnManager_exports));
-    const roomManager = new RoomManager2();
-    const spawnManager = new SpawnManager2();
-    this.registerManager("RoomManager", () => roomManager.run());
-    this.registerManager("SpawnManager", () => spawnManager.run());
   }
   initializeMemory() {
     if (!Memory.uuid) {
@@ -858,10 +858,10 @@ var Kernel = class {
 };
 
 // src/main.ts
-if (!global.kernel) {
-  global.kernel = new Kernel();
-}
 function loop() {
+  if (!global.kernel) {
+    global.kernel = new Kernel();
+  }
   global.kernel.run();
 }
 // Annotate the CommonJS export names for ESM import in node:

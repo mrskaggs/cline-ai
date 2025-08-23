@@ -64,9 +64,9 @@ export const Settings = {
   // Logging and debugging
   logging: {
     enabled: true,
-    logLevel: 'WARN',          // DEBUG, INFO, WARN, ERROR
+    logLevel: 'INFO',          // DEBUG, INFO, WARN, ERROR
     logCreepActions: false,    // Log individual creep actions
-    logSpawning: false,        // Log spawning decisions
+    logSpawning: true,         // Log spawning decisions
     logRoomUpdates: false,     // Log room memory updates
   },
 
