@@ -193,10 +193,11 @@ export class RoadPlanner {
     const sitesToPlace = maxSites - existingRoadSites;
     
     // Sort roads by priority and place highest priority first
+    // Allow high-priority roads (like source/controller paths) even without traffic data
     const eligibleRoads = roads
       .filter(road => 
         !road.placed && 
-        road.trafficScore >= Settings.planning.minTrafficForRoad &&
+        (road.trafficScore >= Settings.planning.minTrafficForRoad || road.priority >= 80) &&
         !this.hasRoadOrStructure(road.pos)
       )
       .sort((a, b) => b.priority - a.priority);

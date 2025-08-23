@@ -1809,7 +1809,7 @@ var init_RoadPlanner = __esm({
         let sitesPlaced = 0;
         const sitesToPlace = maxSites - existingRoadSites;
         const eligibleRoads = roads.filter(
-          (road) => !road.placed && road.trafficScore >= Settings.planning.minTrafficForRoad && !this.hasRoadOrStructure(road.pos)
+          (road) => !road.placed && (road.trafficScore >= Settings.planning.minTrafficForRoad || road.priority >= 80) && !this.hasRoadOrStructure(road.pos)
         ).sort((a, b) => b.priority - a.priority);
         for (const road of eligibleRoads) {
           if (sitesPlaced >= sitesToPlace) break;
@@ -2080,11 +2080,14 @@ var init_RoomManager = __esm({
           if (roomMemory && roomMemory.plan && roomMemory.plan.rcl !== (room.controller ? room.controller.level : 0)) {
             Logger.info(`RoomManager: RCL changed for room ${room.name}, replanning...`);
             this.replanRoom(room);
+            return;
           }
+          let roadsUpdatedThisTick = false;
           if (this.shouldUpdateBuildingPlan(room)) {
             this.updateBuildingPlan(room);
+            roadsUpdatedThisTick = true;
           }
-          if (this.shouldUpdateRoadPlan(room)) {
+          if (!roadsUpdatedThisTick && this.shouldUpdateRoadPlan(room)) {
             this.updateRoadPlan(room);
           }
         } catch (error) {
@@ -2185,6 +2188,13 @@ var init_RoomManager = __esm({
           roomMemory.plan.roads = roads;
           roomMemory.plan.lastUpdated = Game.time;
           Logger.info(`RoomManager: Updated road plan for ${room.name} with ${roads.length} roads`);
+          if (roads.length > 0) {
+            try {
+              RoadPlanner.placeRoadConstructionSites(room, roads);
+            } catch (error) {
+              Logger.error(`RoomManager: Error placing road construction sites immediately after planning for room ${room.name}: ${error}`);
+            }
+          }
         } catch (error) {
           Logger.error(`RoomManager: Error updating road plan for room ${room.name}: ${error}`);
         }

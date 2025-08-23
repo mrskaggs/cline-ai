@@ -266,6 +266,24 @@ interface CreepMemory {
 - **Optimized Pathfinding**: Efficient movement with cached cost matrices
 - **Smart Scheduling**: Planning systems run on different cadences to distribute CPU load
 
+## Recent Bug Fixes & Improvements
+
+### Duplicate Road Planning Fix
+- **Issue**: RoadPlanner was executing twice per tick, wasting CPU
+- **Fix**: Added execution tracking to prevent duplicate planning calls
+- **Impact**: Reduced CPU usage and eliminated duplicate log messages
+
+### Road Placement Fix
+- **Issue**: Generated roads weren't appearing as construction sites
+- **Root Cause**: Traffic requirement filtered out all roads in new rooms (no traffic data)
+- **Fix**: Allow high-priority roads (spawn-source, spawn-controller) without traffic data
+- **Impact**: Critical infrastructure roads now appear immediately in new rooms
+
+### Console Logging Improvements
+- **Issue**: Excessive console spam cluttering Screeps interface
+- **Fix**: Implemented centralized Logger with configurable levels and throttling
+- **Impact**: Clean console output with meaningful information only
+
 ## Testing
 
 The project includes comprehensive validation tests:
@@ -273,19 +291,24 @@ The project includes comprehensive validation tests:
 ```bash
 # Run system validation tests
 node test_system_validation.js
+
+# Test duplicate road planning fix
+node test_duplicate_road_planning_fix.js
+
+# Test road placement fix
+node test_road_placement_fix.js
 ```
 
 Tests validate:
 - Settings system loading
-- Logger functionality
-- Terrain analysis
-- Key position identification
-- Layout templates
-- Building planning (33 buildings for RCL 3)
-- Traffic analysis
-- Road planning (5 roads planned)
-- Pathfinding utilities
-- Full system integration
+- Logger functionality with throttling
+- Terrain analysis and key position identification
+- Layout templates and building planning (33 buildings for RCL 3)
+- Traffic analysis and road planning (122 roads planned, high-priority placed immediately)
+- Pathfinding utilities and cost matrix caching
+- Duplicate execution prevention
+- Road placement logic with priority-based filtering
+- Full system integration and error handling
 
 ## Future Expansion
 

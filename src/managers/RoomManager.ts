@@ -127,15 +127,21 @@ export class RoomManager {
       if (roomMemory && roomMemory.plan && roomMemory.plan.rcl !== (room.controller ? room.controller.level : 0)) {
         Logger.info(`RoomManager: RCL changed for room ${room.name}, replanning...`);
         this.replanRoom(room);
+        return; // Exit early after replanning to avoid duplicate work
       }
+
+      // Track if we've updated roads this tick to prevent duplicates
+      let roadsUpdatedThisTick = false;
 
       // Update building plans if needed
       if (this.shouldUpdateBuildingPlan(room)) {
         this.updateBuildingPlan(room);
+        // Building plan update may have triggered road planning
+        roadsUpdatedThisTick = true;
       }
 
-      // Update road plans if needed
-      if (this.shouldUpdateRoadPlan(room)) {
+      // Update road plans if needed (but not if already updated)
+      if (!roadsUpdatedThisTick && this.shouldUpdateRoadPlan(room)) {
         this.updateRoadPlan(room);
       }
 
@@ -283,6 +289,15 @@ export class RoomManager {
       roomMemory.plan.lastUpdated = Game.time;
       
       Logger.info(`RoomManager: Updated road plan for ${room.name} with ${roads.length} roads`);
+      
+      // Place road construction sites immediately after planning
+      if (roads.length > 0) {
+        try {
+          RoadPlanner.placeRoadConstructionSites(room, roads);
+        } catch (error) {
+          Logger.error(`RoomManager: Error placing road construction sites immediately after planning for room ${room.name}: ${error}`);
+        }
+      }
     } catch (error) {
       Logger.error(`RoomManager: Error updating road plan for room ${room.name}: ${error}`);
     }
