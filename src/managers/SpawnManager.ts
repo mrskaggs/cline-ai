@@ -1,5 +1,6 @@
 import { Logger } from '../utils/Logger';
 import { Hauler } from '../roles/Hauler';
+import { Scout } from '../roles/Scout';
 
 export class SpawnManager {
   public run(): void {
@@ -85,6 +86,23 @@ export class SpawnManager {
           requiredCreeps['hauler'] = Math.max(1, Math.floor(sourceCount * 1.5));
         }
       }
+      
+      // Scouts: Intelligence gathering for future expansion
+      // Start scouting at RCL 2+ when basic infrastructure is stable
+      if (rcl >= 2) {
+        // Only spawn scouts if we have stable economy (enough harvesters and upgraders)
+        const currentHarvesters = Object.values(Game.creeps).filter(
+          creep => creep.memory.homeRoom === room.name && creep.memory.role === 'harvester'
+        ).length;
+        const currentUpgraders = Object.values(Game.creeps).filter(
+          creep => creep.memory.homeRoom === room.name && creep.memory.role === 'upgrader'
+        ).length;
+        
+        // Only spawn scout if we have stable core economy
+        if (currentHarvesters >= sourceCount && currentUpgraders >= 1) {
+          requiredCreeps['scout'] = 1; // One scout per room is sufficient
+        }
+      }
     }
 
     return requiredCreeps;
@@ -103,7 +121,7 @@ export class SpawnManager {
     }
 
     // Check what we need to spawn (priority order)
-    const roles = ['harvester', 'hauler', 'upgrader', 'builder'];
+    const roles = ['harvester', 'hauler', 'upgrader', 'builder', 'scout'];
     
     for (const role of roles) {
       const current = creepCounts[role] || 0;
@@ -137,6 +155,8 @@ export class SpawnManager {
         return this.getUpgraderBody(energyAvailable);
       case 'builder':
         return this.getBuilderBody(energyAvailable);
+      case 'scout':
+        return Scout.getBodyParts(energyAvailable);
       default:
         Logger.warn(`Unknown role for body generation: ${role}`, 'SpawnManager');
         return [];
@@ -250,6 +270,8 @@ export class SpawnManager {
         return this.getUpgraderBody(maxEnergy);
       case 'builder':
         return this.getBuilderBody(maxEnergy);
+      case 'scout':
+        return Scout.getBodyParts(maxEnergy);
       default:
         return [];
     }

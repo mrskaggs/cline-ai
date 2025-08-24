@@ -234,6 +234,10 @@ export class Kernel implements IKernel {
         const { Upgrader } = require('../roles/Upgrader');
         Upgrader.run(creep);
         break;
+      case 'scout':
+        const { Scout } = require('../roles/Scout');
+        Scout.run(creep);
+        break;
       default:
         Logger.warn(`Unknown role: ${creep.memory.role}`, 'Kernel');
     }

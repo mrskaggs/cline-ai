@@ -8,6 +8,10 @@ interface CreepMemory {
   working?: boolean;
   hauling?: boolean;
   homeRoom: string;
+  // Scout-specific properties
+  targetRoom?: string;
+  scoutingPhase?: 'moving' | 'exploring' | 'returning';
+  lastExplored?: number;
 }
 
 interface RoomMemory {
@@ -33,6 +37,7 @@ interface RoomMemory {
     mode: 'collect' | 'distribute' | 'balanced';
     lastUpdated: number;
   };
+  scoutData?: ScoutData;
 }
 
 interface SourceMemory {
@@ -40,6 +45,9 @@ interface SourceMemory {
   containerId?: Id<StructureContainer>;
   linkId?: Id<StructureLink>;
   path?: RoomPosition[];
+  pos?: RoomPosition;
+  energyCapacity?: number;
+  lastUpdated?: number;
 }
 
 interface Memory {
@@ -131,4 +139,40 @@ interface KeyPositions {
   controller: RoomPosition | undefined;
   mineral: RoomPosition | undefined;
   exits: RoomPosition[];
+}
+
+// -- Scout System Types -- //
+
+interface ScoutData {
+  lastScouted: number;
+  roomType: string;
+  sources?: {
+    id: Id<Source>;
+    pos: RoomPosition;
+    energyCapacity: number;
+  }[];
+  mineral?: {
+    id: Id<Mineral>;
+    pos: RoomPosition;
+    mineralType: MineralConstant;
+    density: number;
+  };
+  controller?: {
+    id: Id<StructureController>;
+    pos: RoomPosition;
+    level: number;
+    owner?: string;
+    reservation?: {
+      username: string;
+      ticksToEnd: number;
+    };
+  };
+  hostileCount: number;
+  hasHostileStructures: boolean;
+  structureCount: number;
+  hasSpawn: boolean;
+  hasTower: boolean;
+  remoteScore: number;
+  inaccessible?: boolean;
+  explorationComplete?: boolean;
 }

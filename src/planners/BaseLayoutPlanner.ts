@@ -560,7 +560,7 @@ export class BaseLayoutPlanner {
   private static getMinRCLForStructure(structureType: BuildableStructureConstant): number {
     const rclRequirements: { [key: string]: number } = {
       [STRUCTURE_SPAWN]: 1,
-      [STRUCTURE_EXTENSION]: 2,
+      [STRUCTURE_EXTENSION]: 2,  // Extensions are available starting at RCL 2
       [STRUCTURE_TOWER]: 3,
       [STRUCTURE_STORAGE]: 4,
       [STRUCTURE_LINK]: 5,

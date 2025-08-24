@@ -43,7 +43,8 @@ src/
 │   ├── Harvester.ts       # Energy harvesting and basic tasks (RCL1)
 │   ├── Builder.ts         # Construction and repair (RCL2+)
 │   ├── Upgrader.ts        # Controller upgrading (RCL2+)
-│   └── Hauler.ts          # Energy logistics and transport (RCL3+)
+│   ├── Hauler.ts          # Energy logistics and transport (RCL3+)
+│   └── Scout.ts           # Room exploration and intelligence gathering (RCL2+)
 ├── planners/
 │   ├── TerrainAnalyzer.ts # Room terrain analysis and key position identification
 │   ├── LayoutTemplates.ts # RCL-based building layout templates
@@ -232,6 +233,40 @@ The Hauler role provides efficient energy logistics for RCL 3+ rooms with contai
 - **Population Scaling**: 1.5 haulers per source (3 haulers for 2-source rooms)
 - **Priority Integration**: Spawns after harvesters but before upgraders/builders
 
+## Scout Role System (RCL 2+)
+
+The Scout role provides intelligence gathering and room exploration for strategic expansion planning:
+
+### Intelligence Gathering
+- **Room Exploration**: Systematically explores adjacent rooms for expansion opportunities
+- **Resource Detection**: Identifies energy sources, minerals, and their locations
+- **Threat Assessment**: Detects hostile creeps, structures, and defensive capabilities
+- **Controller Analysis**: Evaluates room ownership, reservation status, and RCL
+- **Strategic Scoring**: Calculates remote mining viability based on multiple factors
+
+### Smart Exploration Logic
+- **Three-Phase Operation**: Moving → Exploring → Returning cycle
+- **Efficient Pathfinding**: Uses optimal routes with visual path indicators
+- **Room Memory Integration**: Populates both scout data and main room memory structures
+- **Comprehensive Coverage**: Moves to room center for maximum visibility
+
+### Memory Management
+- **Dual Data Storage**: Updates both `scoutData` (intelligence) and `sources` (system compatibility)
+- **Timestamp Control**: Only marks rooms as "scouted" when exploration is complete
+- **Staleness Detection**: Re-scouts rooms after 1000 ticks for updated intelligence
+- **Error Handling**: Marks inaccessible rooms to prevent infinite loops
+
+### Energy-Efficient Design
+- **Minimal Body**: Uses only MOVE parts (50-100 energy cost)
+- **Smart Spawning**: Only spawns in RCL 2+ rooms with stable economy
+- **Priority Integration**: Spawns after essential roles but provides strategic value
+
+### Strategic Intelligence
+- **Room Type Classification**: Identifies normal, highway, center, and source keeper rooms
+- **Remote Mining Scoring**: Evaluates rooms based on sources, threats, and accessibility
+- **Expansion Planning**: Provides data for future remote mining and expansion decisions
+- **Visual Feedback**: 🔍 indicator shows active scouting operations
+
 ## Defense System
 
 - **Tower Control**: Automatic tower targeting of hostile creeps
@@ -356,6 +391,19 @@ interface CreepMemory {
 - **Integration**: Full SpawnManager and Kernel integration with priority-based spawning
 - **Testing**: Comprehensive test suite validates all functionality - all tests pass
 - **Impact**: Ready for RCL 3 transition with efficient container-based energy logistics
+
+### Scout Role Implementation (Intelligence System)
+- **Feature**: Complete Scout role system for room exploration and strategic intelligence
+- **Room Cycling Fix**: Resolved infinite cycling issue with proper memory timestamp management
+- **Memory Integration**: Populates both `scoutData` (intelligence) and `sources` (system compatibility)
+- **Intelligence Gathering**: Comprehensive data collection - sources, minerals, controller, hostiles, structures
+- **Smart Exploration**: Three-phase state machine (moving → exploring → returning) with room center positioning
+- **Error Handling**: Marks inaccessible rooms to prevent infinite loops, comprehensive logging for debugging
+- **Energy Efficient**: Minimal MOVE-only bodies (50-100 energy), spawns only in stable RCL 2+ economies
+- **Strategic Value**: Room type classification, remote mining scoring, expansion planning data
+- **Integration**: Full SpawnManager and Kernel integration with priority-based spawning
+- **Testing**: Comprehensive test suite validates all functionality - all tests pass
+- **Impact**: Provides strategic intelligence for expansion while waiting for RCL 3+
 
 ## Testing
 
