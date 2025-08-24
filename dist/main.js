@@ -2531,7 +2531,7 @@ var init_Builder = __esm({
       }
       static buildOrRepair(creep) {
         let target = null;
-        target = creep.pos.findClosestByPath(FIND_CONSTRUCTION_SITES);
+        target = this.findHighestPriorityConstructionSite(creep);
         if (!target) {
           target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
             filter: (structure) => {
@@ -2563,6 +2563,53 @@ var init_Builder = __esm({
             }
           }
         }
+      }
+      static findHighestPriorityConstructionSite(creep) {
+        const room = creep.room;
+        const roomMemory = Memory.rooms[room.name];
+        const constructionSites = room.find(FIND_CONSTRUCTION_SITES);
+        if (constructionSites.length === 0) {
+          return null;
+        }
+        if (!roomMemory || !roomMemory.plan) {
+          return creep.pos.findClosestByPath(constructionSites) || null;
+        }
+        const sitesWithPriority = [];
+        for (const site of constructionSites) {
+          let priority = 0;
+          const plannedBuilding = roomMemory.plan.buildings.find(
+            (building) => building.pos.x === site.pos.x && building.pos.y === site.pos.y && building.structureType === site.structureType
+          );
+          if (plannedBuilding) {
+            priority = plannedBuilding.priority;
+          } else {
+            const plannedRoad = roomMemory.plan.roads.find(
+              (road) => road.pos.x === site.pos.x && road.pos.y === site.pos.y
+            );
+            if (plannedRoad) {
+              priority = plannedRoad.priority;
+            }
+          }
+          const distance = creep.pos.getRangeTo(site.pos);
+          sitesWithPriority.push({
+            site,
+            priority,
+            distance
+          });
+        }
+        sitesWithPriority.sort((a, b) => {
+          if (a.priority !== b.priority) {
+            return b.priority - a.priority;
+          }
+          return a.distance - b.distance;
+        });
+        for (const item of sitesWithPriority) {
+          const path = creep.pos.findPathTo(item.site.pos);
+          if (path.length > 0) {
+            return item.site;
+          }
+        }
+        return sitesWithPriority.length > 0 ? sitesWithPriority[0].site : null;
       }
     };
   }

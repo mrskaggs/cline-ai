@@ -116,3 +116,46 @@ This document tracks the current state of the project, including recent changes,
 - **Change**: Added immediate `placeRoadConstructionSites()` call after planning
 - **Impact**: Eliminated up to 40-tick delay between planning and placement
 - **Logs**: Will show both planning and immediate placement messages
+
+## Priority-Based Building System (Current Session)
+
+### Builder Optimization Issue
+- **Problem**: Builders were using `findClosestByPath` to select construction sites, causing them to go back and forth between different buildings instead of focusing on high-priority structures first
+- **Root Cause**: No priority consideration in construction site selection - builders would work on whatever was closest, not what was most important
+- **Solution**: Implemented priority-based targeting system that uses the existing priority values from room plans
+
+#### Changes Made:
+1. **Modified Builder Role** (`src/roles/Builder.ts`)
+   - Replaced `findClosestByPath(FIND_CONSTRUCTION_SITES)` with custom `findHighestPriorityConstructionSite()` method
+   - New method sorts construction sites by priority (highest first), then by distance (closest first) for tie-breaking
+   - Falls back to closest site when no room plan exists (backward compatibility)
+
+2. **Priority-Based Selection Logic**:
+   - Matches construction sites to planned buildings/roads using position and structure type
+   - Uses priority values from `PlannedBuilding.priority` and `PlannedRoad.priority`
+   - Sorts by priority descending, then distance ascending
+   - Verifies reachability before selection
+
+3. **Priority Hierarchy** (from existing system):
+   - **Buildings**: Spawn=100, Extensions=80-75, Storage=70, etc.
+   - **Roads**: Source paths=100, Controller paths=90, Mineral=70, Exit=60, Internal=50
+
+#### Testing:
+- Created comprehensive test suite (`test_priority_building_system.js`)
+- **Test 1**: Priority-based selection - PASS (selects spawn over extensions)
+- **Test 2**: Distance tie-breaking - PASS (selects closer site with same priority)
+- **Test 3**: Fallback behavior - PASS (uses closest when no plan exists)
+- **Test 4**: Mixed priorities - PASS (selects high-priority road over lower-priority building)
+
+#### Benefits:
+- **Eliminates Back-and-Forth**: Builders now focus on completing high-priority structures before moving to lower-priority ones
+- **Faster Base Development**: Critical infrastructure (spawns, source roads, controller roads) gets built first
+- **CPU Efficiency**: Reduces unnecessary movement between distant construction sites
+- **Maintains Compatibility**: Falls back to old behavior when room plans don't exist
+
+### Technical Details
+- **File Modified**: `src/roles/Builder.ts`
+- **Method Added**: `findHighestPriorityConstructionSite(creep: Creep): ConstructionSite | null`
+- **Algorithm**: Priority-first sorting with distance tie-breaking and reachability verification
+- **Impact**: Builders now work systematically on highest-priority construction sites first
+- **Testing**: All 4 test scenarios pass, confirming correct priority-based behavior

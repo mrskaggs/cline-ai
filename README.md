@@ -284,6 +284,15 @@ interface CreepMemory {
 - **Fix**: Implemented centralized Logger with configurable levels and throttling
 - **Impact**: Clean console output with meaningful information only
 
+### Priority-Based Building System
+- **Issue**: Builders were going back and forth between construction sites based on proximity rather than importance
+- **Root Cause**: Construction site selection used `findClosestByPath` without considering priority
+- **Fix**: Implemented priority-based targeting system that uses existing priority values from room plans
+- **Impact**: Builders now focus on high-priority structures (spawns, source roads) before lower-priority ones
+- **Algorithm**: Sorts construction sites by priority (highest first), then distance (closest first) for tie-breaking
+- **Testing**: Comprehensive test suite with 4 scenarios - all tests pass
+- **Benefits**: Eliminates inefficient back-and-forth movement, faster base development, better CPU efficiency
+
 ## Testing
 
 The project includes comprehensive validation tests:
@@ -297,6 +306,9 @@ node test_duplicate_road_planning_fix.js
 
 # Test road placement fix
 node test_road_placement_fix.js
+
+# Test priority-based building system
+node test_priority_building_system.js
 ```
 
 Tests validate:

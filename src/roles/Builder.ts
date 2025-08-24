@@ -79,11 +79,11 @@ export class Builder {
   }
 
   private static buildOrRepair(creep: Creep): void {
-    // Priority: construction sites, then repair damaged structures
+    // Priority: construction sites (by priority), then repair damaged structures
     let target: ConstructionSite | Structure | null = null;
 
-    // First priority: construction sites
-    target = creep.pos.findClosestByPath(FIND_CONSTRUCTION_SITES);
+    // First priority: construction sites (sorted by priority)
+    target = this.findHighestPriorityConstructionSite(creep);
 
     // Second priority: damaged structures (below 80% health)
     if (!target) {
@@ -131,5 +131,77 @@ export class Builder {
         }
       }
     }
+  }
+
+  private static findHighestPriorityConstructionSite(creep: Creep): ConstructionSite | null {
+    const room = creep.room;
+    const roomMemory = Memory.rooms[room.name];
+    
+    // Get all construction sites in the room
+    const constructionSites = room.find(FIND_CONSTRUCTION_SITES);
+    if (constructionSites.length === 0) {
+      return null;
+    }
+
+    // If no room plan exists, fall back to closest site
+    if (!roomMemory || !roomMemory.plan) {
+      return creep.pos.findClosestByPath(constructionSites) || null;
+    }
+
+    // Create a map of construction sites with their priorities
+    const sitesWithPriority: Array<{ site: ConstructionSite; priority: number; distance: number }> = [];
+
+    for (const site of constructionSites) {
+      let priority = 0;
+      
+      // Find priority from planned buildings
+      const plannedBuilding = roomMemory.plan.buildings.find(building => 
+        building.pos.x === site.pos.x && 
+        building.pos.y === site.pos.y && 
+        building.structureType === site.structureType
+      );
+      
+      if (plannedBuilding) {
+        priority = plannedBuilding.priority;
+      } else {
+        // Find priority from planned roads
+        const plannedRoad = roomMemory.plan.roads.find(road => 
+          road.pos.x === site.pos.x && 
+          road.pos.y === site.pos.y
+        );
+        
+        if (plannedRoad) {
+          priority = plannedRoad.priority;
+        }
+      }
+
+      // Calculate distance for tie-breaking
+      const distance = creep.pos.getRangeTo(site.pos);
+      
+      sitesWithPriority.push({
+        site,
+        priority,
+        distance
+      });
+    }
+
+    // Sort by priority (highest first), then by distance (closest first)
+    sitesWithPriority.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return b.priority - a.priority; // Higher priority first
+      }
+      return a.distance - b.distance; // Closer first for same priority
+    });
+
+    // Return the highest priority site that's reachable
+    for (const item of sitesWithPriority) {
+      const path = creep.pos.findPathTo(item.site.pos);
+      if (path.length > 0) {
+        return item.site;
+      }
+    }
+
+    // If no sites are reachable, return the highest priority one anyway
+    return sitesWithPriority.length > 0 ? sitesWithPriority[0].site : null;
   }
 }
