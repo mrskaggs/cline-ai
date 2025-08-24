@@ -50,12 +50,21 @@ export class Kernel implements IKernel {
       // Register managers
       const { RoomManager } = require('../managers/RoomManager');
       const { SpawnManager } = require('../managers/SpawnManager');
+      const { StorageManager } = require('../managers/StorageManager');
       
       this.roomManager = new RoomManager();
       this.spawnManager = new SpawnManager();
       
       this.registerManager('RoomManager', () => this.roomManager.run());
       this.registerManager('SpawnManager', () => this.spawnManager.run());
+      this.registerManager('StorageManager', () => {
+        for (const roomName in Game.rooms) {
+          const room = Game.rooms[roomName];
+          if (room && room.controller && room.controller.my) {
+            StorageManager.run(room);
+          }
+        }
+      });
       
       this.initialized = true;
     }

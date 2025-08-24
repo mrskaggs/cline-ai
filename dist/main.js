@@ -769,16 +769,20 @@ var init_LayoutTemplates = __esm({
         };
       }
       /**
-       * RCL 3 Template - Add tower and more extensions
+       * RCL 3 Template - Add tower, containers, and more extensions
        */
       static getRCL3Template() {
         return {
-          name: "RCL3_Tower",
+          name: "RCL3_Tower_Containers",
           rcl: 3,
           centerOffset: { x: 0, y: 0 },
           buildings: [
             // Tower for defense
             { structureType: STRUCTURE_TOWER, offset: { x: 2, y: 0 }, priority: 1 },
+            // Containers for energy logistics (placed near expected source/controller positions)
+            { structureType: STRUCTURE_CONTAINER, offset: { x: -3, y: -3 }, priority: 2 },
+            { structureType: STRUCTURE_CONTAINER, offset: { x: 3, y: 3 }, priority: 2 },
+            { structureType: STRUCTURE_CONTAINER, offset: { x: 0, y: 3 }, priority: 3 },
             // Additional extensions (5 more for total of 10)
             { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: -1 }, priority: 2 },
             { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 1 }, priority: 2 },
@@ -984,6 +988,7 @@ var init_LayoutTemplates = __esm({
         else if (rcl >= 5) limits[STRUCTURE_TOWER] = 2;
         else if (rcl >= 3) limits[STRUCTURE_TOWER] = 1;
         else limits[STRUCTURE_TOWER] = 0;
+        limits[STRUCTURE_CONTAINER] = rcl >= 3 ? 5 : 0;
         limits[STRUCTURE_STORAGE] = rcl >= 4 ? 1 : 0;
         limits[STRUCTURE_LINK] = rcl >= 5 ? Math.min(Math.floor((rcl - 4) * 2), 6) : 0;
         limits[STRUCTURE_TERMINAL] = rcl >= 6 ? 1 : 0;
@@ -2358,6 +2363,169 @@ var init_RoomManager = __esm({
   }
 });
 
+// src/managers/StorageManager.ts
+var StorageManager_exports = {};
+__export(StorageManager_exports, {
+  StorageManager: () => StorageManager
+});
+var StorageManager;
+var init_StorageManager = __esm({
+  "src/managers/StorageManager.ts"() {
+    "use strict";
+    init_Logger();
+    StorageManager = class {
+      /**
+       * Main storage management execution for a room
+       */
+      static run(room) {
+        try {
+          if (room.controller && room.controller.level >= 4) {
+            this.manageStorage(room);
+            this.optimizeEnergyFlow(room);
+          }
+        } catch (error) {
+          Logger.error(`StorageManager: Error in room ${room.name}: ${error}`);
+        }
+      }
+      /**
+       * Manages storage operations and maintenance
+       */
+      static manageStorage(room) {
+        const storage = room.storage;
+        if (!storage) {
+          Logger.debug(`StorageManager: No storage found in room ${room.name}`);
+          return;
+        }
+        if (!room.memory.storage) {
+          room.memory.storage = {
+            id: storage.id,
+            lastUpdated: Game.time,
+            energyLevel: storage.store.energy,
+            capacity: storage.store.getCapacity(RESOURCE_ENERGY)
+          };
+          Logger.info(`StorageManager: Storage registered in room ${room.name}`);
+        }
+        room.memory.storage.energyLevel = storage.store.energy;
+        room.memory.storage.lastUpdated = Game.time;
+        if (Game.time % 100 === 0) {
+          const fillPercent = Math.round(storage.store.energy / storage.store.getCapacity(RESOURCE_ENERGY) * 100);
+          Logger.info(`StorageManager: Room ${room.name} storage at ${fillPercent}% (${storage.store.energy}/${storage.store.getCapacity(RESOURCE_ENERGY)})`);
+        }
+      }
+      /**
+       * Optimizes energy flow between storage and other structures
+       */
+      static optimizeEnergyFlow(room) {
+        const storage = room.storage;
+        if (!storage) return;
+        const energyLevel = storage.store.energy;
+        const capacity = storage.store.getCapacity(RESOURCE_ENERGY);
+        const fillPercent = energyLevel / capacity;
+        if (!room.memory.energyStrategy) {
+          room.memory.energyStrategy = {
+            mode: "balanced",
+            lastUpdated: Game.time
+          };
+        }
+        let newMode = "balanced";
+        if (fillPercent > 0.8) {
+          newMode = "distribute";
+        } else if (fillPercent < 0.2) {
+          newMode = "collect";
+        }
+        if (room.memory.energyStrategy.mode !== newMode) {
+          room.memory.energyStrategy.mode = newMode;
+          room.memory.energyStrategy.lastUpdated = Game.time;
+          Logger.info(`StorageManager: Room ${room.name} energy strategy changed to ${newMode} (${Math.round(fillPercent * 100)}% full)`);
+        }
+      }
+      /**
+       * Gets the current energy strategy for a room
+       */
+      static getEnergyStrategy(room) {
+        return room.memory.energyStrategy && room.memory.energyStrategy.mode || "balanced";
+      }
+      /**
+       * Determines if storage should be prioritized for energy collection
+       */
+      static shouldPrioritizeStorage(room) {
+        const strategy = this.getEnergyStrategy(room);
+        return strategy === "distribute";
+      }
+      /**
+       * Determines if containers should be prioritized over storage
+       */
+      static shouldPrioritizeContainers(room) {
+        const strategy = this.getEnergyStrategy(room);
+        return strategy === "collect";
+      }
+      /**
+       * Gets optimal energy targets for haulers based on current strategy
+       */
+      static getOptimalEnergyTargets(room) {
+        const strategy = this.getEnergyStrategy(room);
+        const targets = [];
+        const spawns = room.find(FIND_MY_SPAWNS);
+        const extensions = room.find(FIND_MY_STRUCTURES, {
+          filter: (structure) => structure.structureType === STRUCTURE_EXTENSION
+        });
+        targets.push(...spawns, ...extensions);
+        const towers = room.find(FIND_MY_STRUCTURES, {
+          filter: (structure) => structure.structureType === STRUCTURE_TOWER
+        });
+        targets.push(...towers);
+        if (room.storage && strategy !== "collect") {
+          targets.push(room.storage);
+        }
+        return targets.filter((target) => {
+          try {
+            const structureWithStore = target;
+            return structureWithStore.store && structureWithStore.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+          } catch {
+            return false;
+          }
+        });
+      }
+      /**
+       * Gets optimal energy sources for haulers based on current strategy
+       */
+      static getOptimalEnergySources(room) {
+        const strategy = this.getEnergyStrategy(room);
+        const sources = [];
+        const containers = room.find(FIND_STRUCTURES, {
+          filter: (structure) => structure.structureType === STRUCTURE_CONTAINER && structure.store.energy > 0
+        });
+        sources.push(...containers);
+        if (room.storage && strategy !== "collect" && room.storage.store.energy > 0) {
+          sources.push(room.storage);
+        }
+        const droppedEnergy = room.find(FIND_DROPPED_RESOURCES, {
+          filter: (resource) => resource.resourceType === RESOURCE_ENERGY
+        });
+        sources.push(...droppedEnergy);
+        return sources;
+      }
+      /**
+       * Calculates storage efficiency metrics
+       */
+      static getStorageMetrics(room) {
+        const storage = room.storage;
+        if (!storage) return null;
+        const energyLevel = storage.store.energy;
+        const capacity = storage.store.getCapacity(RESOURCE_ENERGY);
+        const fillPercent = energyLevel / capacity;
+        return {
+          energyLevel,
+          capacity,
+          fillPercent,
+          strategy: this.getEnergyStrategy(room),
+          lastUpdated: room.memory.storage && room.memory.storage.lastUpdated || Game.time
+        };
+      }
+    };
+  }
+});
+
 // src/roles/Hauler.ts
 var Hauler_exports = {};
 __export(Hauler_exports, {
@@ -2368,6 +2536,7 @@ var init_Hauler = __esm({
   "src/roles/Hauler.ts"() {
     "use strict";
     init_Logger();
+    init_StorageManager();
     Hauler = class {
       static run(creep) {
         try {
@@ -2390,28 +2559,57 @@ var init_Hauler = __esm({
       }
       /**
        * Collect energy from containers, storage, or dropped resources
+       * Uses StorageManager for optimal source selection based on room strategy
        */
       static collectEnergy(creep) {
+        const optimalSources = StorageManager.getOptimalEnergySources(creep.room);
+        if (optimalSources.length > 0) {
+          let bestSource = null;
+          let bestScore = 0;
+          for (const source of optimalSources) {
+            let energyAmount = 0;
+            let distance = 0;
+            if ("structureType" in source && "store" in source) {
+              const structure = source;
+              energyAmount = structure.store[RESOURCE_ENERGY] || 0;
+              distance = creep.pos.getRangeTo(structure);
+            } else if ("resourceType" in source && "amount" in source) {
+              const resource = source;
+              energyAmount = resource.amount;
+              distance = creep.pos.getRangeTo(resource);
+            }
+            const score = energyAmount - distance * 10;
+            if (score > bestScore) {
+              bestScore = score;
+              bestSource = source;
+            }
+          }
+          if (bestSource) {
+            let result;
+            if ("structureType" in bestSource) {
+              result = creep.withdraw(bestSource, RESOURCE_ENERGY);
+            } else {
+              result = creep.pickup(bestSource);
+            }
+            if (result === ERR_NOT_IN_RANGE) {
+              creep.moveTo(bestSource, { visualizePathStyle: { stroke: "#ffaa00" } });
+            }
+            return;
+          }
+        }
         const containers = creep.room.find(FIND_STRUCTURES, {
           filter: (structure) => {
             return structure.structureType === STRUCTURE_CONTAINER && structure.store[RESOURCE_ENERGY] > 0;
           }
         });
         if (containers.length > 0) {
-          const targetContainer = containers.reduce(
-            (prev, current) => current.store[RESOURCE_ENERGY] > prev.store[RESOURCE_ENERGY] ? current : prev
-          );
-          if (creep.withdraw(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-            creep.moveTo(targetContainer, { visualizePathStyle: { stroke: "#ffaa00" } });
+          const targetContainer = creep.pos.findClosestByPath(containers);
+          if (targetContainer) {
+            if (creep.withdraw(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+              creep.moveTo(targetContainer, { visualizePathStyle: { stroke: "#ffaa00" } });
+            }
+            return;
           }
-          return;
-        }
-        const storage = creep.room.storage;
-        if (storage && storage.store[RESOURCE_ENERGY] > 0) {
-          if (creep.withdraw(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-            creep.moveTo(storage, { visualizePathStyle: { stroke: "#ffaa00" } });
-          }
-          return;
         }
         const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
           filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
@@ -2419,20 +2617,6 @@ var init_Hauler = __esm({
         if (droppedEnergy) {
           if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
             creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: "#ffaa00" } });
-          }
-          return;
-        }
-        const links = creep.room.find(FIND_STRUCTURES, {
-          filter: (structure) => {
-            return structure.structureType === STRUCTURE_LINK && structure.store[RESOURCE_ENERGY] > 0;
-          }
-        });
-        if (links.length > 0) {
-          const targetLink = creep.pos.findClosestByPath(links);
-          if (targetLink) {
-            if (creep.withdraw(targetLink, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-              creep.moveTo(targetLink, { visualizePathStyle: { stroke: "#ffaa00" } });
-            }
           }
           return;
         }
@@ -3110,10 +3294,19 @@ var Kernel = class {
       Logger.info("Loading kernel...", "Kernel");
       const { RoomManager: RoomManager2 } = (init_RoomManager(), __toCommonJS(RoomManager_exports));
       const { SpawnManager: SpawnManager2 } = (init_SpawnManager(), __toCommonJS(SpawnManager_exports));
+      const { StorageManager: StorageManager2 } = (init_StorageManager(), __toCommonJS(StorageManager_exports));
       this.roomManager = new RoomManager2();
       this.spawnManager = new SpawnManager2();
       this.registerManager("RoomManager", () => this.roomManager.run());
       this.registerManager("SpawnManager", () => this.spawnManager.run());
+      this.registerManager("StorageManager", () => {
+        for (const roomName in Game.rooms) {
+          const room = Game.rooms[roomName];
+          if (room && room.controller && room.controller.my) {
+            StorageManager2.run(room);
+          }
+        }
+      });
       this.initialized = true;
     }
   }

@@ -23,6 +23,16 @@ interface RoomMemory {
     keyPositions: KeyPositions;
     lastAnalyzed: number;
   };
+  storage?: {
+    id: Id<StructureStorage>;
+    lastUpdated: number;
+    energyLevel: number;
+    capacity: number;
+  };
+  energyStrategy?: {
+    mode: 'collect' | 'distribute' | 'balanced';
+    lastUpdated: number;
+  };
 }
 
 interface SourceMemory {

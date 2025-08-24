@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node --target=es2020",
-    "build:watch": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node --target=es2020 --watch",
+    "build": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node --target=es2019",
+    "build:watch": "esbuild src/main.ts --bundle --outfile=dist/main.js --platform=node --target=es2019 --watch",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts",

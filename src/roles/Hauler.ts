@@ -1,8 +1,10 @@
 import { Logger } from '../utils/Logger';
+import { StorageManager } from '../managers/StorageManager';
 
 /**
  * Hauler role - Transports energy from containers/storage to spawn/extensions/towers
  * Critical for RCL 3+ when harvesters become stationary miners
+ * Integrates with StorageManager for optimal energy flow strategies
  */
 export class Hauler {
   public static run(creep: Creep): void {
@@ -29,8 +31,62 @@ export class Hauler {
 
   /**
    * Collect energy from containers, storage, or dropped resources
+   * Uses StorageManager for optimal source selection based on room strategy
    */
   private static collectEnergy(creep: Creep): void {
+    // Use StorageManager to get optimal energy sources based on current strategy
+    const optimalSources = StorageManager.getOptimalEnergySources(creep.room);
+    
+    if (optimalSources.length > 0) {
+      // Find the best source (closest with most energy)
+      let bestSource: Structure | Resource | null = null;
+      let bestScore = 0;
+
+      for (const source of optimalSources) {
+        let energyAmount = 0;
+        let distance = 0;
+
+        // Check if it's a structure with store
+        if ('structureType' in source && 'store' in source) {
+          const structure = source as StructureContainer | StructureStorage;
+          energyAmount = structure.store[RESOURCE_ENERGY] || 0;
+          distance = creep.pos.getRangeTo(structure);
+        } 
+        // Check if it's a dropped resource
+        else if ('resourceType' in source && 'amount' in source) {
+          const resource = source as unknown as Resource;
+          energyAmount = resource.amount;
+          distance = creep.pos.getRangeTo(resource);
+        }
+
+        // Score based on energy amount and proximity (higher is better)
+        const score = energyAmount - (distance * 10);
+        if (score > bestScore) {
+          bestScore = score;
+          bestSource = source;
+        }
+      }
+
+      if (bestSource) {
+        let result: ScreepsReturnCode;
+        
+        // Check if it's a structure
+        if ('structureType' in bestSource) {
+          result = creep.withdraw(bestSource as Structure, RESOURCE_ENERGY);
+        } 
+        // Otherwise it's a dropped resource
+        else {
+          result = creep.pickup(bestSource as Resource);
+        }
+
+        if (result === ERR_NOT_IN_RANGE) {
+          creep.moveTo(bestSource, { visualizePathStyle: { stroke: '#ffaa00' } });
+        }
+        return;
+      }
+    }
+
+    // Fallback: Look for any available energy sources
     // Priority 1: Containers near sources (primary energy collection)
     const containers = creep.room.find(FIND_STRUCTURES, {
       filter: (structure) => {
@@ -40,27 +96,16 @@ export class Hauler {
     }) as StructureContainer[];
 
     if (containers.length > 0) {
-      // Find container with most energy
-      const targetContainer = containers.reduce((prev, current) => 
-        current.store[RESOURCE_ENERGY] > prev.store[RESOURCE_ENERGY] ? current : prev
-      );
-
-      if (creep.withdraw(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-        creep.moveTo(targetContainer, { visualizePathStyle: { stroke: '#ffaa00' } });
+      const targetContainer = creep.pos.findClosestByPath(containers);
+      if (targetContainer) {
+        if (creep.withdraw(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+          creep.moveTo(targetContainer, { visualizePathStyle: { stroke: '#ffaa00' } });
+        }
+        return;
       }
-      return;
     }
 
-    // Priority 2: Storage (if available)
-    const storage = creep.room.storage;
-    if (storage && storage.store[RESOURCE_ENERGY] > 0) {
-      if (creep.withdraw(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-        creep.moveTo(storage, { visualizePathStyle: { stroke: '#ffaa00' } });
-      }
-      return;
-    }
-
-    // Priority 3: Dropped energy
+    // Priority 2: Dropped energy
     const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
       filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
     });
@@ -68,24 +113,6 @@ export class Hauler {
     if (droppedEnergy) {
       if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
         creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: '#ffaa00' } });
-      }
-      return;
-    }
-
-    // Priority 4: Links (if available)
-    const links = creep.room.find(FIND_STRUCTURES, {
-      filter: (structure) => {
-        return structure.structureType === STRUCTURE_LINK &&
-               structure.store[RESOURCE_ENERGY] > 0;
-      }
-    }) as StructureLink[];
-
-    if (links.length > 0) {
-      const targetLink = creep.pos.findClosestByPath(links);
-      if (targetLink) {
-        if (creep.withdraw(targetLink, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-          creep.moveTo(targetLink, { visualizePathStyle: { stroke: '#ffaa00' } });
-        }
       }
       return;
     }
