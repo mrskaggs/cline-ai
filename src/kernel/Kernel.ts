@@ -213,6 +213,10 @@ export class Kernel implements IKernel {
         const { Harvester } = require('../roles/Harvester');
         Harvester.run(creep);
         break;
+      case 'hauler':
+        const { Hauler } = require('../roles/Hauler');
+        Hauler.run(creep);
+        break;
       case 'builder':
         const { Builder } = require('../roles/Builder');
         Builder.run(creep);

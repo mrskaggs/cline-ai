@@ -19,7 +19,7 @@ export class RoadPlanner {
     const startCpu = Game.cpu.getUsed();
     
     try {
-      Logger.info(`RoadPlanner: Planning road network for room ${room.name}`);
+      Logger.debug(`RoadPlanner: Planning road network for room ${room.name}`);
       
       // Get key positions for road planning
       const keyPositions = TerrainAnalyzer.identifyKeyPositions(room);
@@ -34,7 +34,7 @@ export class RoadPlanner {
       const roads = this.optimizeRoadPlacement(optimalPaths, trafficData, room);
       
       const cpuUsed = Game.cpu.getUsed() - startCpu;
-      Logger.info(`RoadPlanner: Planned ${roads.length} roads for room ${room.name} in ${cpuUsed.toFixed(2)} CPU`);
+      Logger.debug(`RoadPlanner: Planned ${roads.length} roads for room ${room.name} in ${cpuUsed.toFixed(2)} CPU`);
       
       return roads;
     } catch (error) {

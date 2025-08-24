@@ -1,4 +1,5 @@
 import { Logger } from '../utils/Logger';
+import { Hauler } from '../roles/Hauler';
 
 export class SpawnManager {
   public run(): void {
@@ -61,6 +62,19 @@ export class SpawnManager {
       // Builders: Based on construction sites and room level
       const baseBuilders = constructionSites.length > 0 ? 2 : 1;
       requiredCreeps['builder'] = Math.min(baseBuilders, Math.floor(rcl / 2) + 1);
+      
+      // Haulers: Critical for RCL 3+ when harvesters become stationary
+      if (rcl >= 3) {
+        // Check if we have containers (indicates transition to stationary mining)
+        const containers = room.find(FIND_STRUCTURES, {
+          filter: (structure) => structure.structureType === STRUCTURE_CONTAINER
+        });
+        
+        if (containers.length > 0) {
+          // Need haulers for logistics when containers exist
+          requiredCreeps['hauler'] = Math.max(1, Math.floor(sourceCount * 1.5));
+        }
+      }
     }
 
     return requiredCreeps;
@@ -79,7 +93,7 @@ export class SpawnManager {
     }
 
     // Check what we need to spawn (priority order)
-    const roles = ['harvester', 'upgrader', 'builder'];
+    const roles = ['harvester', 'hauler', 'upgrader', 'builder'];
     
     for (const role of roles) {
       const current = creepCounts[role] || 0;
@@ -88,6 +102,11 @@ export class SpawnManager {
       if (current < needed) {
         const body = this.getCreepBody(role, room);
         if (body.length > 0) {
+          // Check if we should wait for more energy to build a better creep
+          if (this.shouldWaitForBetterCreep(room, role, body)) {
+            Logger.debug(`Waiting for more energy to spawn better ${role} (current: ${room.energyAvailable}/${room.energyCapacityAvailable})`, 'SpawnManager');
+            continue; // Skip this role for now
+          }
           return { role, body };
         }
       }
@@ -102,6 +121,8 @@ export class SpawnManager {
     switch (role) {
       case 'harvester':
         return this.getHarvesterBody(energyAvailable);
+      case 'hauler':
+        return Hauler.getBody(energyAvailable);
       case 'upgrader':
         return this.getUpgraderBody(energyAvailable);
       case 'builder':
@@ -165,6 +186,67 @@ export class SpawnManager {
     } else {
       return [WORK, CARRY, MOVE];
     }
+  }
+
+  private shouldWaitForBetterCreep(room: Room, role: string, currentBody: BodyPartConstant[]): boolean {
+    // Don't wait if we have no creeps of this role (emergency spawning)
+    const existingCreeps = Object.values(Game.creeps).filter(
+      creep => creep.memory.homeRoom === room.name && creep.memory.role === role
+    );
+    
+    if (existingCreeps.length === 0) {
+      // Emergency case: spawn immediately if we have no creeps of this role
+      return false;
+    }
+
+    // Calculate what body we could build with full energy capacity
+    const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable);
+    const potentialBodyCost = this.calculateBodyCost(potentialBody);
+
+    // Only wait if:
+    // 1. The potential body is significantly better (more parts)
+    // 2. We have enough capacity to build the better body
+    // 3. We're not too far from having enough energy (within 50% of capacity)
+    const isSignificantlyBetter = potentialBody.length > currentBody.length;
+    const canAffordBetter = potentialBodyCost <= room.energyCapacityAvailable;
+    const closeToCapacity = room.energyAvailable >= (room.energyCapacityAvailable * 0.5);
+
+    return isSignificantlyBetter && canAffordBetter && closeToCapacity;
+  }
+
+  private getOptimalCreepBody(role: string, energyCapacity: number): BodyPartConstant[] {
+    // Get the best possible body for this role given the energy capacity
+    // Cap at reasonable limits to avoid overly expensive creeps
+    const maxEnergy = Math.min(energyCapacity, 800); // Reasonable cap for early game
+
+    switch (role) {
+      case 'harvester':
+        return this.getHarvesterBody(maxEnergy);
+      case 'hauler':
+        return Hauler.getBody(maxEnergy);
+      case 'upgrader':
+        return this.getUpgraderBody(maxEnergy);
+      case 'builder':
+        return this.getBuilderBody(maxEnergy);
+      default:
+        return [];
+    }
+  }
+
+  private calculateBodyCost(body: BodyPartConstant[]): number {
+    return body.reduce((cost, part) => {
+      switch (part) {
+        case WORK: return cost + 100;
+        case CARRY: return cost + 50;
+        case MOVE: return cost + 50;
+        case ATTACK: return cost + 80;
+        case RANGED_ATTACK: return cost + 150;
+        case HEAL: return cost + 250;
+        case CLAIM: return cost + 600;
+        case TOUGH: return cost + 10;
+        default: return cost;
+      }
+    }, 0);
   }
 
   private spawnCreep(spawn: StructureSpawn, role: string, body: BodyPartConstant[], homeRoom: string): void {

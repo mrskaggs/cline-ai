@@ -18,7 +18,7 @@ A modular, CPU-efficient Screeps AI that autonomously progresses rooms from RCL1
 - **Kernel**: Main loop scheduler with CPU guards and error handling
 - **Room Manager**: Scans rooms, populates memory, manages planning systems and tower defense
 - **Spawn Manager**: Calculates required creeps and spawns them based on RCL progression
-- **Role System**: Specialized creep behaviors (Harvester, Builder, Upgrader)
+- **Role System**: Specialized creep behaviors (Harvester, Builder, Upgrader, Hauler)
 - **Planning System**: Comprehensive building and road planning with traffic analysis
 - **Memory Management**: Automatic cleanup of dead creeps and efficient memory usage
 
@@ -42,7 +42,8 @@ src/
 ├── roles/
 │   ├── Harvester.ts       # Energy harvesting and basic tasks (RCL1)
 │   ├── Builder.ts         # Construction and repair (RCL2+)
-│   └── Upgrader.ts        # Controller upgrading (RCL2+)
+│   ├── Upgrader.ts        # Controller upgrading (RCL2+)
+│   └── Hauler.ts          # Energy logistics and transport (RCL3+)
 ├── planners/
 │   ├── TerrainAnalyzer.ts # Room terrain analysis and key position identification
 │   ├── LayoutTemplates.ts # RCL-based building layout templates
@@ -192,15 +193,44 @@ logging: {
 
 ### RCL 3
 - **Defense**: First tower for room defense
+- **Logistics**: Hauler role for efficient energy transport from containers
 - **Buildings**: Tower + 5 additional extensions (10 total)
-- **Population**: 2 harvesters, 2 upgraders, 1-2 builders
-- **Planning**: Tower placement for optimal coverage
+- **Population**: 2 harvesters, 2 upgraders, 1-2 builders, 3 haulers (1.5 per source)
+- **Planning**: Tower placement for optimal coverage, container-based energy logistics
+- **Efficiency**: Haulers transport energy from source containers to spawn/extensions/towers
 
 ### RCL 4-8
 - **Advanced Structures**: Storage, terminal, labs, factory, etc.
 - **Complex Layouts**: Multi-spawn setups, lab clusters, defensive positions
 - **Specialized Buildings**: Power spawn, nuker, observer for high-level rooms
 - **Road Networks**: Comprehensive road systems based on traffic analysis
+
+## Hauler Role System (RCL 3+)
+
+The Hauler role provides efficient energy logistics for RCL 3+ rooms with container-based energy collection:
+
+### Smart Collection Priority
+- **Containers**: Primary energy source from harvester deposits
+- **Storage**: Secondary source when available
+- **Dropped Energy**: Cleanup of scattered energy
+- **Links**: Integration with link networks
+
+### Intelligent Delivery Priority
+- **Spawn**: Highest priority for creep production
+- **Extensions**: Essential for larger creep spawning
+- **Towers**: Defense and repair capabilities
+- **Storage**: Excess energy storage
+- **Controller Containers**: Support for upgrader operations
+
+### Energy-Optimized Bodies
+- **Scaling Design**: Bodies scale from 2-carry (200 energy) to 8-carry (800 energy)
+- **Efficient Movement**: Balanced MOVE/CARRY ratio for optimal speed
+- **Cost Effective**: Adapts to available energy capacity
+
+### Smart Spawning Logic
+- **Container Detection**: Only spawns when containers are available
+- **Population Scaling**: 1.5 haulers per source (3 haulers for 2-source rooms)
+- **Priority Integration**: Spawns after harvesters but before upgraders/builders
 
 ## Defense System
 
@@ -255,6 +285,7 @@ interface CreepMemory {
   working?: boolean;
   sourceId?: Id<Source>;
   targetId?: Id<Structure | ConstructionSite>;
+  hauling?: boolean;                  // Hauler role state tracking
 }
 ```
 
@@ -313,6 +344,18 @@ interface CreepMemory {
 - **Algorithm**: Sorts construction sites by priority (highest first), then distance (closest first) for tie-breaking
 - **Testing**: Comprehensive test suite with 4 scenarios - all tests pass
 - **Benefits**: Eliminates inefficient back-and-forth movement, faster base development, better CPU efficiency
+
+### Hauler Role Implementation (RCL 3+ Ready)
+- **Feature**: Complete Hauler role system for efficient energy logistics at RCL 3+
+- **Smart Collection**: Prioritizes containers → storage → dropped energy → links
+- **Intelligent Delivery**: Spawn → extensions → towers → storage → controller containers
+- **Energy-Optimized Bodies**: Scales from 2-carry (200 energy) to 8-carry (800 energy)
+- **Smart Spawning**: Container detection with 1.5 haulers per source scaling
+- **State Management**: Visual feedback with 🔄 pickup and 🚚 delivery indicators
+- **ES2019 Compatibility**: Removed optional chaining for Screeps compatibility
+- **Integration**: Full SpawnManager and Kernel integration with priority-based spawning
+- **Testing**: Comprehensive test suite validates all functionality - all tests pass
+- **Impact**: Ready for RCL 3 transition with efficient container-based energy logistics
 
 ## Testing
 

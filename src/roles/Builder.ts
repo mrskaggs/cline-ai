@@ -202,6 +202,9 @@ export class Builder {
     }
 
     // If no sites are reachable, return the highest priority one anyway
-    return sitesWithPriority.length > 0 ? sitesWithPriority[0].site : null;
+    if (sitesWithPriority.length > 0 && sitesWithPriority[0]) {
+      return sitesWithPriority[0].site;
+    }
+    return null;
   }
 }

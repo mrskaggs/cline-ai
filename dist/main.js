@@ -1272,11 +1272,11 @@ var init_BaseLayoutPlanner = __esm({
         }
         let sitesPlaced = 0;
         const sitesToPlace = maxSites - existingSites;
-        Logger.warn(`BaseLayoutPlanner: Room ${room.name} - Current RCL: ${currentRCL}, Plan RCL: ${plan.rcl}`);
+        Logger.debug(`BaseLayoutPlanner: Room ${room.name} - Current RCL: ${currentRCL}, Plan RCL: ${plan.rcl}`);
         const eligibleBuildings = plan.buildings.filter(
           (building) => !building.placed && building.rclRequired <= currentRCL && !this.hasStructureAtPosition(room, building.pos, building.structureType)
         ).sort((a, b) => b.priority - a.priority);
-        Logger.warn(`BaseLayoutPlanner: Room ${room.name} - Total buildings: ${plan.buildings.length}, Eligible: ${eligibleBuildings.length}`);
+        Logger.debug(`BaseLayoutPlanner: Room ${room.name} - Total buildings: ${plan.buildings.length}, Eligible: ${eligibleBuildings.length}`);
         for (const building of eligibleBuildings) {
           if (sitesPlaced >= sitesToPlace) break;
           Logger.debug(`BaseLayoutPlanner: Attempting to place ${building.structureType} at ${building.pos.x},${building.pos.y} - RCL required: ${building.rclRequired}, Current RCL: ${currentRCL}`);
@@ -1446,7 +1446,7 @@ var init_BaseLayoutPlanner = __esm({
       /**
        * Validate if a position is suitable for construction site placement
        */
-      static isValidConstructionPosition(room, pos, structureType) {
+      static isValidConstructionPosition(room, pos, _structureType) {
         const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
         if (roomPos.x < 1 || roomPos.x > 48 || roomPos.y < 1 || roomPos.y > 48) {
           return false;
@@ -1789,13 +1789,13 @@ var init_RoadPlanner = __esm({
         if (!Settings.planning.roadPlanningEnabled) return [];
         const startCpu = Game.cpu.getUsed();
         try {
-          Logger.info(`RoadPlanner: Planning road network for room ${room.name}`);
+          Logger.debug(`RoadPlanner: Planning road network for room ${room.name}`);
           const keyPositions = TerrainAnalyzer.identifyKeyPositions(room);
           const optimalPaths = this.calculateOptimalPaths(room, keyPositions);
           const trafficData = TrafficAnalyzer.analyzeTrafficPatterns(room);
           const roads = this.optimizeRoadPlacement(optimalPaths, trafficData, room);
           const cpuUsed = Game.cpu.getUsed() - startCpu;
-          Logger.info(`RoadPlanner: Planned ${roads.length} roads for room ${room.name} in ${cpuUsed.toFixed(2)} CPU`);
+          Logger.debug(`RoadPlanner: Planned ${roads.length} roads for room ${room.name} in ${cpuUsed.toFixed(2)} CPU`);
           return roads;
         } catch (error) {
           Logger.error(`RoadPlanner: Error planning roads for room ${room.name}: ${error}`);
@@ -2358,6 +2358,198 @@ var init_RoomManager = __esm({
   }
 });
 
+// src/roles/Hauler.ts
+var Hauler_exports = {};
+__export(Hauler_exports, {
+  Hauler: () => Hauler
+});
+var Hauler;
+var init_Hauler = __esm({
+  "src/roles/Hauler.ts"() {
+    "use strict";
+    init_Logger();
+    Hauler = class {
+      static run(creep) {
+        try {
+          if (creep.memory.hauling && creep.store[RESOURCE_ENERGY] === 0) {
+            creep.memory.hauling = false;
+            creep.say("\u{1F504} pickup");
+          }
+          if (!creep.memory.hauling && creep.store.getFreeCapacity() === 0) {
+            creep.memory.hauling = true;
+            creep.say("\u{1F69A} deliver");
+          }
+          if (creep.memory.hauling) {
+            this.deliverEnergy(creep);
+          } else {
+            this.collectEnergy(creep);
+          }
+        } catch (error) {
+          Logger.error(`Hauler ${creep.name}: Error in run: ${error}`, "Hauler");
+        }
+      }
+      /**
+       * Collect energy from containers, storage, or dropped resources
+       */
+      static collectEnergy(creep) {
+        const containers = creep.room.find(FIND_STRUCTURES, {
+          filter: (structure) => {
+            return structure.structureType === STRUCTURE_CONTAINER && structure.store[RESOURCE_ENERGY] > 0;
+          }
+        });
+        if (containers.length > 0) {
+          const targetContainer = containers.reduce(
+            (prev, current) => current.store[RESOURCE_ENERGY] > prev.store[RESOURCE_ENERGY] ? current : prev
+          );
+          if (creep.withdraw(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+            creep.moveTo(targetContainer, { visualizePathStyle: { stroke: "#ffaa00" } });
+          }
+          return;
+        }
+        const storage = creep.room.storage;
+        if (storage && storage.store[RESOURCE_ENERGY] > 0) {
+          if (creep.withdraw(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+            creep.moveTo(storage, { visualizePathStyle: { stroke: "#ffaa00" } });
+          }
+          return;
+        }
+        const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
+          filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
+        });
+        if (droppedEnergy) {
+          if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
+            creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: "#ffaa00" } });
+          }
+          return;
+        }
+        const links = creep.room.find(FIND_STRUCTURES, {
+          filter: (structure) => {
+            return structure.structureType === STRUCTURE_LINK && structure.store[RESOURCE_ENERGY] > 0;
+          }
+        });
+        if (links.length > 0) {
+          const targetLink = creep.pos.findClosestByPath(links);
+          if (targetLink) {
+            if (creep.withdraw(targetLink, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+              creep.moveTo(targetLink, { visualizePathStyle: { stroke: "#ffaa00" } });
+            }
+          }
+          return;
+        }
+        creep.moveTo(25, 25);
+      }
+      /**
+       * Deliver energy to spawn, extensions, towers, or storage
+       */
+      static deliverEnergy(creep) {
+        const spawn = creep.pos.findClosestByPath(FIND_MY_SPAWNS, {
+          filter: (spawn2) => spawn2.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+        });
+        if (spawn) {
+          if (creep.transfer(spawn, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+            creep.moveTo(spawn, { visualizePathStyle: { stroke: "#ffffff" } });
+          }
+          return;
+        }
+        const extensions = creep.room.find(FIND_MY_STRUCTURES, {
+          filter: (structure) => {
+            return structure.structureType === STRUCTURE_EXTENSION && structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+          }
+        });
+        if (extensions.length > 0) {
+          const targetExtension = creep.pos.findClosestByPath(extensions);
+          if (targetExtension) {
+            if (creep.transfer(targetExtension, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+              creep.moveTo(targetExtension, { visualizePathStyle: { stroke: "#ffffff" } });
+            }
+            return;
+          }
+        }
+        const towers = creep.room.find(FIND_MY_STRUCTURES, {
+          filter: (structure) => {
+            return structure.structureType === STRUCTURE_TOWER && structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+          }
+        });
+        if (towers.length > 0) {
+          const targetTower = creep.pos.findClosestByPath(towers);
+          if (targetTower) {
+            if (creep.transfer(targetTower, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+              creep.moveTo(targetTower, { visualizePathStyle: { stroke: "#ffffff" } });
+            }
+            return;
+          }
+        }
+        const storage = creep.room.storage;
+        if (storage && storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+          if (creep.transfer(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+            creep.moveTo(storage, { visualizePathStyle: { stroke: "#ffffff" } });
+          }
+          return;
+        }
+        if (creep.room.controller) {
+          const controllerContainers = creep.room.controller.pos.findInRange(FIND_STRUCTURES, 3, {
+            filter: (structure) => {
+              return structure.structureType === STRUCTURE_CONTAINER && structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+            }
+          });
+          if (controllerContainers.length > 0) {
+            const targetContainer = controllerContainers[0];
+            if (targetContainer) {
+              if (creep.transfer(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+                creep.moveTo(targetContainer, { visualizePathStyle: { stroke: "#ffffff" } });
+              }
+              return;
+            }
+          }
+        }
+        creep.moveTo(25, 25);
+      }
+      /**
+       * Get optimal body configuration for hauler based on available energy
+       */
+      static getBody(energyAvailable) {
+        const bodies = [
+          { energy: 200, body: [CARRY, CARRY, MOVE] },
+          // 2 carry, 1 move (100 capacity)
+          { energy: 300, body: [CARRY, CARRY, CARRY, MOVE, MOVE] },
+          // 3 carry, 2 move (150 capacity)
+          { energy: 400, body: [CARRY, CARRY, CARRY, CARRY, MOVE, MOVE] },
+          // 4 carry, 2 move (200 capacity)
+          { energy: 500, body: [CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] },
+          // 5 carry, 3 move (250 capacity)
+          { energy: 600, body: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] },
+          // 6 carry, 3 move (300 capacity)
+          { energy: 800, body: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE] }
+          // 8 carry, 4 move (400 capacity)
+        ];
+        for (let i = bodies.length - 1; i >= 0; i--) {
+          const bodyConfig = bodies[i];
+          if (bodyConfig && energyAvailable >= bodyConfig.energy) {
+            return bodyConfig.body;
+          }
+        }
+        return [CARRY, CARRY, MOVE];
+      }
+      /**
+       * Calculate energy cost for a body configuration
+       */
+      static calculateBodyCost(body) {
+        const costs = {
+          [MOVE]: 50,
+          [WORK]: 100,
+          [CARRY]: 50,
+          [ATTACK]: 80,
+          [RANGED_ATTACK]: 150,
+          [HEAL]: 250,
+          [CLAIM]: 600,
+          [TOUGH]: 10
+        };
+        return body.reduce((total, part) => total + (costs[part] || 0), 0);
+      }
+    };
+  }
+});
+
 // src/managers/SpawnManager.ts
 var SpawnManager_exports = {};
 __export(SpawnManager_exports, {
@@ -2368,6 +2560,7 @@ var init_SpawnManager = __esm({
   "src/managers/SpawnManager.ts"() {
     "use strict";
     init_Logger();
+    init_Hauler();
     SpawnManager = class {
       run() {
         for (const spawnName in Game.spawns) {
@@ -2409,6 +2602,14 @@ var init_SpawnManager = __esm({
           requiredCreeps["upgrader"] = rcl >= 3 ? 2 : 1;
           const baseBuilders = constructionSites.length > 0 ? 2 : 1;
           requiredCreeps["builder"] = Math.min(baseBuilders, Math.floor(rcl / 2) + 1);
+          if (rcl >= 3) {
+            const containers = room.find(FIND_STRUCTURES, {
+              filter: (structure) => structure.structureType === STRUCTURE_CONTAINER
+            });
+            if (containers.length > 0) {
+              requiredCreeps["hauler"] = Math.max(1, Math.floor(sourceCount * 1.5));
+            }
+          }
         }
         return requiredCreeps;
       }
@@ -2421,13 +2622,17 @@ var init_SpawnManager = __esm({
             creepCounts[role] = (creepCounts[role] || 0) + 1;
           }
         }
-        const roles = ["harvester", "upgrader", "builder"];
+        const roles = ["harvester", "hauler", "upgrader", "builder"];
         for (const role of roles) {
           const current = creepCounts[role] || 0;
           const needed = required[role] || 0;
           if (current < needed) {
             const body = this.getCreepBody(role, room);
             if (body.length > 0) {
+              if (this.shouldWaitForBetterCreep(room, role, body)) {
+                Logger.debug(`Waiting for more energy to spawn better ${role} (current: ${room.energyAvailable}/${room.energyCapacityAvailable})`, "SpawnManager");
+                continue;
+              }
               return { role, body };
             }
           }
@@ -2439,6 +2644,8 @@ var init_SpawnManager = __esm({
         switch (role) {
           case "harvester":
             return this.getHarvesterBody(energyAvailable);
+          case "hauler":
+            return Hauler.getBody(energyAvailable);
           case "upgrader":
             return this.getUpgraderBody(energyAvailable);
           case "builder":
@@ -2484,6 +2691,59 @@ var init_SpawnManager = __esm({
         } else {
           return [WORK, CARRY, MOVE];
         }
+      }
+      shouldWaitForBetterCreep(room, role, currentBody) {
+        const existingCreeps = Object.values(Game.creeps).filter(
+          (creep) => creep.memory.homeRoom === room.name && creep.memory.role === role
+        );
+        if (existingCreeps.length === 0) {
+          return false;
+        }
+        const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable);
+        const potentialBodyCost = this.calculateBodyCost(potentialBody);
+        const isSignificantlyBetter = potentialBody.length > currentBody.length;
+        const canAffordBetter = potentialBodyCost <= room.energyCapacityAvailable;
+        const closeToCapacity = room.energyAvailable >= room.energyCapacityAvailable * 0.5;
+        return isSignificantlyBetter && canAffordBetter && closeToCapacity;
+      }
+      getOptimalCreepBody(role, energyCapacity) {
+        const maxEnergy = Math.min(energyCapacity, 800);
+        switch (role) {
+          case "harvester":
+            return this.getHarvesterBody(maxEnergy);
+          case "hauler":
+            return Hauler.getBody(maxEnergy);
+          case "upgrader":
+            return this.getUpgraderBody(maxEnergy);
+          case "builder":
+            return this.getBuilderBody(maxEnergy);
+          default:
+            return [];
+        }
+      }
+      calculateBodyCost(body) {
+        return body.reduce((cost, part) => {
+          switch (part) {
+            case WORK:
+              return cost + 100;
+            case CARRY:
+              return cost + 50;
+            case MOVE:
+              return cost + 50;
+            case ATTACK:
+              return cost + 80;
+            case RANGED_ATTACK:
+              return cost + 150;
+            case HEAL:
+              return cost + 250;
+            case CLAIM:
+              return cost + 600;
+            case TOUGH:
+              return cost + 10;
+            default:
+              return cost;
+          }
+        }, 0);
       }
       spawnCreep(spawn, role, body, homeRoom) {
         const name = `${role}_${Game.time}`;
@@ -2716,7 +2976,10 @@ var init_Builder = __esm({
             return item.site;
           }
         }
-        return sitesWithPriority.length > 0 ? sitesWithPriority[0].site : null;
+        if (sitesWithPriority.length > 0 && sitesWithPriority[0]) {
+          return sitesWithPriority[0].site;
+        }
+        return null;
       }
     };
   }
@@ -2971,6 +3234,10 @@ var Kernel = class {
       case "harvester":
         const { Harvester: Harvester2 } = (init_Harvester(), __toCommonJS(Harvester_exports));
         Harvester2.run(creep);
+        break;
+      case "hauler":
+        const { Hauler: Hauler2 } = (init_Hauler(), __toCommonJS(Hauler_exports));
+        Hauler2.run(creep);
         break;
       case "builder":
         const { Builder: Builder2 } = (init_Builder(), __toCommonJS(Builder_exports));

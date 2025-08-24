@@ -6,6 +6,7 @@ interface CreepMemory {
   sourceId?: Id<Source>;
   targetId?: Id<Structure> | Id<ConstructionSite> | Id<Creep>;
   working?: boolean;
+  hauling?: boolean;
   homeRoom: string;
 }
 

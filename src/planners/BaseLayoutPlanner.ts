@@ -366,7 +366,7 @@ export class BaseLayoutPlanner {
     const sitesToPlace = maxSites - existingSites;
     
     // Debug logging to understand the RCL mismatch issue
-    Logger.warn(`BaseLayoutPlanner: Room ${room.name} - Current RCL: ${currentRCL}, Plan RCL: ${plan.rcl}`);
+    Logger.debug(`BaseLayoutPlanner: Room ${room.name} - Current RCL: ${currentRCL}, Plan RCL: ${plan.rcl}`);
     
     // Sort buildings by priority and RCL requirements
     const eligibleBuildings = plan.buildings
@@ -377,7 +377,7 @@ export class BaseLayoutPlanner {
       )
       .sort((a, b) => b.priority - a.priority);
     
-    Logger.warn(`BaseLayoutPlanner: Room ${room.name} - Total buildings: ${plan.buildings.length}, Eligible: ${eligibleBuildings.length}`);
+    Logger.debug(`BaseLayoutPlanner: Room ${room.name} - Total buildings: ${plan.buildings.length}, Eligible: ${eligibleBuildings.length}`);
     
     for (const building of eligibleBuildings) {
       if (sitesPlaced >= sitesToPlace) break;
@@ -598,7 +598,7 @@ export class BaseLayoutPlanner {
   /**
    * Validate if a position is suitable for construction site placement
    */
-  private static isValidConstructionPosition(room: Room, pos: RoomPosition, structureType: BuildableStructureConstant): boolean {
+  private static isValidConstructionPosition(room: Room, pos: RoomPosition, _structureType: BuildableStructureConstant): boolean {
     // Ensure pos is a proper RoomPosition object (in case it came from memory)
     const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
     
