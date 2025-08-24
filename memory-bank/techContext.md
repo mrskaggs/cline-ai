@@ -38,3 +38,45 @@
 -   **API Validation**: Validate all parameters before Screeps API calls
 -   **Graceful Degradation**: System continues functioning even when individual components fail
 -   **Comprehensive Logging**: Human-readable error messages with diagnostic context
+
+## MCP Server Resources
+
+### Context7 MCP Server - Screeps Documentation
+**Available Libraries:**
+- `/screeps/screeps` - Standalone server (8 code snippets)
+- `/screeps/docs` - Official documentation (503 code snippets)
+
+**Access Pattern:**
+```javascript
+// 1. Resolve library ID
+use_mcp_tool('github.com/upstash/context7-mcp', 'resolve-library-id', {libraryName: 'screeps'})
+
+// 2. Get documentation for specific topics
+use_mcp_tool('github.com/upstash/context7-mcp', 'get-library-docs', {
+  context7CompatibleLibraryID: '/screeps/docs',
+  topic: 'pathfinding' | 'performance' | 'labs' | 'factory' | 'market',
+  tokens: 8000
+})
+```
+
+**Immediate Applications:**
+- **PathFinder optimization**: Advanced PathFinder.search with custom cost matrices
+- **CPU profiling**: Per-creep CPU monitoring with `Game.cpu.getUsed()`
+- **Movement optimization**: `moveTo({reusePath: 50})` patterns for CPU efficiency
+- **Memory management**: `Room.serializePath` for efficient path storage
+
+**Future Development Resources:**
+- **RCL 6+ Labs**: Complete reaction chains and creep boosting systems
+- **RCL 7+ Factory**: Commodity production for economic growth
+- **Power Creeps**: Advanced room management capabilities
+- **Market automation**: Resource trading and price analysis systems
+
+**Key Examples Available:**
+- PathFinder with custom cost matrices and room callbacks
+- CPU-optimized movement patterns with conditional pathfinding
+- Lab reaction systems for mineral compound production
+- Factory commodity production recipes and cooldowns
+- Market order creation and price history analysis
+- Power creep creation and ability usage patterns
+
+**Usage Priority:** Use when implementing advanced features, optimizing performance, or researching new game mechanics. Particularly valuable for RCL 6+ development phases.
