@@ -331,7 +331,10 @@ export class RoadPlanner {
    * Check if position already has a road or blocking structure
    */
   private static hasRoadOrStructure(pos: RoomPosition): boolean {
-    const structures = pos.lookFor(LOOK_STRUCTURES);
+    // Ensure pos is a proper RoomPosition object (in case it came from memory)
+    const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+    
+    const structures = roomPos.lookFor(LOOK_STRUCTURES);
     const hasRoad = structures.some(s => s.structureType === STRUCTURE_ROAD);
     const hasBlockingStructure = structures.some(s => 
       s.structureType !== STRUCTURE_ROAD && 
@@ -339,7 +342,7 @@ export class RoadPlanner {
       !(s.structureType === STRUCTURE_RAMPART && (s as StructureRampart).my)
     );
     
-    const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+    const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
     const hasRoadSite = sites.some(s => s.structureType === STRUCTURE_ROAD);
     
     return hasRoad || hasBlockingStructure || hasRoadSite;
@@ -364,7 +367,10 @@ export class RoadPlanner {
    * Find construction site ID for a road at a specific position
    */
   private static findRoadConstructionSiteId(_room: Room, pos: RoomPosition): Id<ConstructionSite> | undefined {
-    const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+    // Ensure pos is a proper RoomPosition object (in case it came from memory)
+    const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+    
+    const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
     const roadSite = sites.find(s => s.structureType === STRUCTURE_ROAD);
     return roadSite ? roadSite.id : undefined;
   }

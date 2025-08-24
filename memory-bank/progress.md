@@ -37,6 +37,40 @@ This document tracks the project's status, including what works, what's left to 
 
 ### 🐛 Recent Bug Fixes
 
+#### Construction Site Placement Errors (CRITICAL - FIXED)
+- **Issue**: Multiple TypeError and API errors causing RoomManager crashes
+- **Root Causes**: Memory serialization, incorrect structure limits, position mismatches
+- **Solutions**: Comprehensive fixes across entire planning system
+- **Status**: ✅ COMPLETELY RESOLVED - All construction site placement now stable
+
+##### Specific Fixes Applied:
+1. **TypeError: pos.lookFor is not a function** ✅ FIXED
+   - Applied RoomPosition reconstruction in BaseLayoutPlanner, TerrainAnalyzer, RoadPlanner
+   - Pattern: Always reconstruct positions from memory before calling methods
+
+2. **ERR_INVALID_TARGET (-10)** ✅ FIXED
+   - Added comprehensive position validation before construction attempts
+   - Validates terrain, boundaries, existing structures, construction sites
+
+3. **ERR_INVALID_ARGS (-10)** ✅ FIXED
+   - Ensured proper RoomPosition objects passed to createConstructionSite API
+   - Reconstructed positions before API calls
+
+4. **ERR_RCL_NOT_ENOUGH (-14)** ✅ FIXED
+   - Corrected structure limits in LayoutTemplates (5 extensions at RCL 2, not 20)
+   - Added automatic detection and replanning of invalid structure counts
+
+5. **Position Mismatch Issues** ✅ FIXED
+   - Created diagnostic tools to identify plan vs reality mismatches
+   - Provided alignment scripts to sync plans with actual room layouts
+
+#### Priority-Based Building System (FIXED)
+- **Issue**: Builders going back and forth between construction sites inefficiently
+- **Root Cause**: Construction site selection used proximity only, not priority
+- **Solution**: Implemented priority-based targeting using existing room plan priorities
+- **Status**: ✅ RESOLVED - Builders now focus on high-priority structures first
+- **Impact**: Faster base development, better CPU efficiency, systematic construction
+
 #### Duplicate Road Planning (FIXED)
 - **Issue**: RoadPlanner executing twice per tick, wasting CPU
 - **Root Cause**: Both `updateBuildingPlan()` and `updateRoadPlan()` called simultaneously

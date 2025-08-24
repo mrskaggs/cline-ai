@@ -641,14 +641,15 @@ var init_TerrainAnalyzer = __esm({
         }
         const room = Game.rooms[pos.roomName];
         if (!room) return false;
-        const structures = pos.lookFor(LOOK_STRUCTURES);
+        const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+        const structures = roomPos.lookFor(LOOK_STRUCTURES);
         if (structures.length > 0) {
           const hasBlockingStructure = structures.some(
             (s) => s.structureType !== STRUCTURE_ROAD && s.structureType !== STRUCTURE_CONTAINER
           );
           if (hasBlockingStructure) return false;
         }
-        const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+        const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
         if (sites.length > 0) return false;
         switch (structureType) {
           case STRUCTURE_SPAWN:
@@ -969,9 +970,20 @@ var init_LayoutTemplates = __esm({
        */
       static getStructureLimits(rcl) {
         const limits = {};
-        limits[STRUCTURE_SPAWN] = Math.min(rcl >= 7 ? 3 : 1, rcl >= 8 ? 3 : rcl >= 7 ? 2 : 1);
-        limits[STRUCTURE_EXTENSION] = Math.min(rcl * 10, 60);
-        limits[STRUCTURE_TOWER] = Math.min(Math.floor(rcl / 3) + (rcl >= 3 ? 1 : 0), 6);
+        limits[STRUCTURE_SPAWN] = rcl >= 8 ? 3 : rcl >= 7 ? 2 : 1;
+        if (rcl >= 8) limits[STRUCTURE_EXTENSION] = 60;
+        else if (rcl >= 7) limits[STRUCTURE_EXTENSION] = 50;
+        else if (rcl >= 6) limits[STRUCTURE_EXTENSION] = 40;
+        else if (rcl >= 5) limits[STRUCTURE_EXTENSION] = 30;
+        else if (rcl >= 4) limits[STRUCTURE_EXTENSION] = 20;
+        else if (rcl >= 3) limits[STRUCTURE_EXTENSION] = 10;
+        else if (rcl >= 2) limits[STRUCTURE_EXTENSION] = 5;
+        else limits[STRUCTURE_EXTENSION] = 0;
+        if (rcl >= 8) limits[STRUCTURE_TOWER] = 6;
+        else if (rcl >= 7) limits[STRUCTURE_TOWER] = 3;
+        else if (rcl >= 5) limits[STRUCTURE_TOWER] = 2;
+        else if (rcl >= 3) limits[STRUCTURE_TOWER] = 1;
+        else limits[STRUCTURE_TOWER] = 0;
         limits[STRUCTURE_STORAGE] = rcl >= 4 ? 1 : 0;
         limits[STRUCTURE_LINK] = rcl >= 5 ? Math.min(Math.floor((rcl - 4) * 2), 6) : 0;
         limits[STRUCTURE_TERMINAL] = rcl >= 6 ? 1 : 0;
@@ -1026,6 +1038,15 @@ var init_BaseLayoutPlanner = __esm({
           let plan = room.memory.plan;
           const currentRCL = room.controller ? room.controller.level : 0;
           if (!plan || plan.rcl < currentRCL || this.shouldReplan(plan)) {
+            if (!plan) {
+              Logger.info(`BaseLayoutPlanner: Creating initial plan for room ${room.name}`);
+            } else if (plan.rcl < currentRCL) {
+              Logger.info(`BaseLayoutPlanner: Replanning room ${room.name} - RCL upgraded from ${plan.rcl} to ${currentRCL}`);
+            } else if (this.hasInvalidStructureCounts(plan)) {
+              Logger.warn(`BaseLayoutPlanner: Replanning room ${room.name} - Invalid structure counts detected (likely due to corrected structure limits)`);
+            } else {
+              Logger.info(`BaseLayoutPlanner: Replanning room ${room.name} - Plan expired or status requires replanning`);
+            }
             plan = this.createNewPlan(room);
           }
           this.updatePlanStatus(room, plan);
@@ -1251,12 +1272,24 @@ var init_BaseLayoutPlanner = __esm({
         }
         let sitesPlaced = 0;
         const sitesToPlace = maxSites - existingSites;
+        Logger.warn(`BaseLayoutPlanner: Room ${room.name} - Current RCL: ${currentRCL}, Plan RCL: ${plan.rcl}`);
         const eligibleBuildings = plan.buildings.filter(
           (building) => !building.placed && building.rclRequired <= currentRCL && !this.hasStructureAtPosition(room, building.pos, building.structureType)
         ).sort((a, b) => b.priority - a.priority);
+        Logger.warn(`BaseLayoutPlanner: Room ${room.name} - Total buildings: ${plan.buildings.length}, Eligible: ${eligibleBuildings.length}`);
         for (const building of eligibleBuildings) {
           if (sitesPlaced >= sitesToPlace) break;
-          const result = room.createConstructionSite(building.pos, building.structureType);
+          Logger.debug(`BaseLayoutPlanner: Attempting to place ${building.structureType} at ${building.pos.x},${building.pos.y} - RCL required: ${building.rclRequired}, Current RCL: ${currentRCL}`);
+          if (!this.isValidConstructionPosition(room, building.pos, building.structureType)) {
+            Logger.debug(`BaseLayoutPlanner: Skipping invalid position for ${building.structureType} at ${building.pos.x},${building.pos.y} in room ${room.name}`);
+            continue;
+          }
+          if (building.rclRequired > currentRCL) {
+            Logger.warn(`BaseLayoutPlanner: Skipping ${building.structureType} at ${building.pos.x},${building.pos.y} - RCL ${building.rclRequired} required but room is RCL ${currentRCL}`);
+            continue;
+          }
+          const roomPos = new RoomPosition(building.pos.x, building.pos.y, building.pos.roomName);
+          const result = room.createConstructionSite(roomPos, building.structureType);
           if (result === OK) {
             building.placed = true;
             const siteId = this.findConstructionSiteId(room, building.pos, building.structureType);
@@ -1266,7 +1299,7 @@ var init_BaseLayoutPlanner = __esm({
             sitesPlaced++;
             Logger.info(`BaseLayoutPlanner: Placed ${building.structureType} construction site at ${building.pos.x},${building.pos.y} in room ${room.name}`);
           } else {
-            Logger.warn(`BaseLayoutPlanner: Failed to place ${building.structureType} at ${building.pos.x},${building.pos.y} in room ${room.name}: ${result}`);
+            Logger.warn(`BaseLayoutPlanner: Failed to place ${building.structureType} at ${building.pos.x},${building.pos.y} in room ${room.name}: ${this.getErrorDescription(result)}`);
           }
         }
         if (sitesPlaced > 0) {
@@ -1277,7 +1310,27 @@ var init_BaseLayoutPlanner = __esm({
       // Helper methods
       static shouldReplan(plan) {
         const age = Game.time - plan.lastUpdated;
-        return age > Settings.planning.layoutAnalysisTTL || plan.status === "planning";
+        return age > Settings.planning.layoutAnalysisTTL || plan.status === "planning" || this.hasInvalidStructureCounts(plan);
+      }
+      /**
+       * Check if the plan has invalid structure counts that exceed current RCL limits
+       * This handles cases where structure limits were corrected after the plan was created
+       */
+      static hasInvalidStructureCounts(plan) {
+        const currentLimits = LayoutTemplates.getStructureLimits(plan.rcl);
+        const structureCounts = {};
+        plan.buildings.forEach((building) => {
+          const type = building.structureType;
+          structureCounts[type] = (structureCounts[type] || 0) + 1;
+        });
+        for (const [structureType, count] of Object.entries(structureCounts)) {
+          const limit = currentLimits[structureType] || 0;
+          if (count > limit) {
+            Logger.warn(`BaseLayoutPlanner: Plan has invalid structure count - ${structureType}: ${count} > ${limit} (RCL ${plan.rcl})`);
+            return true;
+          }
+        }
+        return false;
       }
       static updatePlanStatus(room, plan) {
         const unplacedBuildings = plan.buildings.filter((b) => !b.placed).length;
@@ -1379,14 +1432,66 @@ var init_BaseLayoutPlanner = __esm({
         return rclRequirements[structureType] || 1;
       }
       static hasStructureAtPosition(_room, pos, structureType) {
-        const structures = pos.lookFor(LOOK_STRUCTURES);
-        const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+        const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+        const structures = roomPos.lookFor(LOOK_STRUCTURES);
+        const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
         return structures.some((s) => s.structureType === structureType) || sites.some((s) => s.structureType === structureType);
       }
       static findConstructionSiteId(_room, pos, structureType) {
-        const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+        const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+        const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
         const site = sites.find((s) => s.structureType === structureType);
         return site ? site.id : void 0;
+      }
+      /**
+       * Validate if a position is suitable for construction site placement
+       */
+      static isValidConstructionPosition(room, pos, structureType) {
+        const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+        if (roomPos.x < 1 || roomPos.x > 48 || roomPos.y < 1 || roomPos.y > 48) {
+          return false;
+        }
+        const terrain = room.getTerrain().get(roomPos.x, roomPos.y);
+        if (terrain & TERRAIN_MASK_WALL) {
+          return false;
+        }
+        const structures = roomPos.lookFor(LOOK_STRUCTURES);
+        if (structures.length > 0) {
+          const blockingStructures = structures.filter(
+            (s) => s.structureType !== STRUCTURE_ROAD && s.structureType !== STRUCTURE_CONTAINER
+          );
+          if (blockingStructures.length > 0) {
+            return false;
+          }
+        }
+        const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
+        if (sites.length > 0) {
+          return false;
+        }
+        const creeps = roomPos.lookFor(LOOK_CREEPS);
+        if (creeps.length > 0) {
+          return false;
+        }
+        return true;
+      }
+      /**
+       * Get human-readable error description for construction site placement errors
+       */
+      static getErrorDescription(errorCode) {
+        switch (errorCode) {
+          case ERR_INVALID_TARGET:
+            return "ERR_INVALID_TARGET (-10): Invalid position or structure type";
+          case ERR_FULL:
+            return "ERR_FULL (-8): Too many construction sites";
+          case ERR_INVALID_ARGS:
+            return "ERR_INVALID_ARGS (-10): Invalid arguments";
+          case ERR_RCL_NOT_ENOUGH:
+            return "ERR_RCL_NOT_ENOUGH (-14): RCL too low for this structure";
+          case ERR_NOT_OWNER:
+            return "ERR_NOT_OWNER (-1): Not room owner";
+          default:
+            return `Unknown error (${errorCode})`;
+        }
       }
     };
   }
@@ -1914,12 +2019,13 @@ var init_RoadPlanner = __esm({
        * Check if position already has a road or blocking structure
        */
       static hasRoadOrStructure(pos) {
-        const structures = pos.lookFor(LOOK_STRUCTURES);
+        const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+        const structures = roomPos.lookFor(LOOK_STRUCTURES);
         const hasRoad = structures.some((s) => s.structureType === STRUCTURE_ROAD);
         const hasBlockingStructure = structures.some(
           (s) => s.structureType !== STRUCTURE_ROAD && s.structureType !== STRUCTURE_CONTAINER && !(s.structureType === STRUCTURE_RAMPART && s.my)
         );
-        const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+        const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
         const hasRoadSite = sites.some((s) => s.structureType === STRUCTURE_ROAD);
         return hasRoad || hasBlockingStructure || hasRoadSite;
       }
@@ -1939,7 +2045,8 @@ var init_RoadPlanner = __esm({
        * Find construction site ID for a road at a specific position
        */
       static findRoadConstructionSiteId(_room, pos) {
-        const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+        const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+        const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
         const roadSite = sites.find((s) => s.structureType === STRUCTURE_ROAD);
         return roadSite ? roadSite.id : void 0;
       }

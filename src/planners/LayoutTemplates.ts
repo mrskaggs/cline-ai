@@ -307,10 +307,26 @@ export class LayoutTemplates {
   public static getStructureLimits(rcl: number): { [key: string]: number } {
     const limits: { [key: string]: number } = {};
     
-    // Base limits that apply to all RCLs
-    limits[STRUCTURE_SPAWN] = Math.min(rcl >= 7 ? 3 : 1, rcl >= 8 ? 3 : rcl >= 7 ? 2 : 1);
-    limits[STRUCTURE_EXTENSION] = Math.min(rcl * 10, 60);
-    limits[STRUCTURE_TOWER] = Math.min(Math.floor(rcl / 3) + (rcl >= 3 ? 1 : 0), 6);
+    // Correct Screeps structure limits per RCL
+    limits[STRUCTURE_SPAWN] = rcl >= 8 ? 3 : rcl >= 7 ? 2 : 1;
+    
+    // Correct extension limits per RCL
+    if (rcl >= 8) limits[STRUCTURE_EXTENSION] = 60;
+    else if (rcl >= 7) limits[STRUCTURE_EXTENSION] = 50;
+    else if (rcl >= 6) limits[STRUCTURE_EXTENSION] = 40;
+    else if (rcl >= 5) limits[STRUCTURE_EXTENSION] = 30;
+    else if (rcl >= 4) limits[STRUCTURE_EXTENSION] = 20;
+    else if (rcl >= 3) limits[STRUCTURE_EXTENSION] = 10;
+    else if (rcl >= 2) limits[STRUCTURE_EXTENSION] = 5;
+    else limits[STRUCTURE_EXTENSION] = 0;
+    
+    // Correct tower limits per RCL
+    if (rcl >= 8) limits[STRUCTURE_TOWER] = 6;
+    else if (rcl >= 7) limits[STRUCTURE_TOWER] = 3;
+    else if (rcl >= 5) limits[STRUCTURE_TOWER] = 2;
+    else if (rcl >= 3) limits[STRUCTURE_TOWER] = 1;
+    else limits[STRUCTURE_TOWER] = 0;
+    
     limits[STRUCTURE_STORAGE] = rcl >= 4 ? 1 : 0;
     limits[STRUCTURE_LINK] = rcl >= 5 ? Math.min(Math.floor((rcl - 4) * 2), 6) : 0;
     limits[STRUCTURE_TERMINAL] = rcl >= 6 ? 1 : 0;

@@ -255,8 +255,11 @@ export class TerrainAnalyzer {
     const room = Game.rooms[pos.roomName];
     if (!room) return false;
 
+    // Ensure pos is a proper RoomPosition object (in case it came from memory)
+    const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);
+
     // Check for existing structures
-    const structures = pos.lookFor(LOOK_STRUCTURES);
+    const structures = roomPos.lookFor(LOOK_STRUCTURES);
     if (structures.length > 0) {
       // Only roads and containers can coexist with some structures
       const hasBlockingStructure = structures.some(s => 
@@ -267,7 +270,7 @@ export class TerrainAnalyzer {
     }
 
     // Check for construction sites
-    const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+    const sites = roomPos.lookFor(LOOK_CONSTRUCTION_SITES);
     if (sites.length > 0) return false;
 
     // Structure-specific checks

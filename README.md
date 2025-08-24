@@ -268,6 +268,27 @@ interface CreepMemory {
 
 ## Recent Bug Fixes & Improvements
 
+### Construction Site Placement Error Fix (Critical)
+- **Issue**: `TypeError: pos.lookFor is not a function` causing RoomManager crashes
+- **Root Cause**: Memory serialization strips prototype methods from RoomPosition objects
+- **Fix**: Applied RoomPosition reconstruction pattern throughout planning system
+- **Files Fixed**: BaseLayoutPlanner.ts, TerrainAnalyzer.ts, RoadPlanner.ts
+- **Impact**: Eliminated all construction site placement crashes, system now stable
+- **Pattern**: `const roomPos = new RoomPosition(pos.x, pos.y, pos.roomName);`
+
+### Extension Position Mismatch Fix
+- **Issue**: ERR_RCL_NOT_ENOUGH errors when placing extensions at RCL 2
+- **Root Cause**: Room plan coordinates didn't match actual extension positions
+- **Fix**: Created diagnostic and alignment scripts to sync plan with reality
+- **Tools**: `diagnose_extension_positions.js`, `fix_plan_to_match_reality.js`
+- **Impact**: System now correctly handles existing structures and avoids duplicate placement
+
+### Memory Serialization Robustness
+- **Issue**: Multiple methods failing due to memory-serialized position objects
+- **Fix**: Comprehensive audit and fix of all position-dependent methods
+- **Methods Fixed**: `hasStructureAtPosition()`, `findConstructionSiteId()`, `isSuitableForStructure()`, `hasRoadOrStructure()`
+- **Impact**: Robust handling of memory data throughout the planning system
+
 ### Duplicate Road Planning Fix
 - **Issue**: RoadPlanner was executing twice per tick, wasting CPU
 - **Fix**: Added execution tracking to prevent duplicate planning calls

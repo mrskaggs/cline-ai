@@ -12,6 +12,10 @@
 
 6.  **Visibility**: decisions & KPIs visible in HUD/logs.
 
+7.  **Memory Serialization Safety**: Always reconstruct RoomPosition objects from memory data before calling prototype methods.
+
+8.  **Diagnostic-First Debugging**: Create diagnostic tools to identify root causes before implementing fixes.
+
 * * * * *
 
 Architecture Overview
