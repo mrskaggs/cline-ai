@@ -1924,10 +1924,11 @@ var init_RoadPlanner = __esm({
         ).sort((a, b) => b.priority - a.priority);
         for (const road of eligibleRoads) {
           if (sitesPlaced >= sitesToPlace) break;
-          const result = room.createConstructionSite(road.pos, STRUCTURE_ROAD);
+          const roomPos = new RoomPosition(road.pos.x, road.pos.y, road.pos.roomName);
+          const result = room.createConstructionSite(roomPos, STRUCTURE_ROAD);
           if (result === OK) {
             road.placed = true;
-            const siteId = this.findRoadConstructionSiteId(room, road.pos);
+            const siteId = this.findRoadConstructionSiteId(room, roomPos);
             if (siteId) {
               road.constructionSiteId = siteId;
             }

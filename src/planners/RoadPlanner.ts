@@ -205,11 +205,14 @@ export class RoadPlanner {
     for (const road of eligibleRoads) {
       if (sitesPlaced >= sitesToPlace) break;
       
-      const result = room.createConstructionSite(road.pos, STRUCTURE_ROAD);
+      // Ensure road.pos is a proper RoomPosition object (in case it came from memory)
+      const roomPos = new RoomPosition(road.pos.x, road.pos.y, road.pos.roomName);
+      
+      const result = room.createConstructionSite(roomPos, STRUCTURE_ROAD);
       
       if (result === OK) {
         road.placed = true;
-        const siteId = this.findRoadConstructionSiteId(room, road.pos);
+        const siteId = this.findRoadConstructionSiteId(room, roomPos);
         if (siteId) {
           road.constructionSiteId = siteId;
         }
