@@ -215,16 +215,25 @@ export class SpawnManager {
     // Calculate what body we could build with full energy capacity
     const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable);
     const potentialBodyCost = this.calculateBodyCost(potentialBody);
+    const currentBodyCost = this.calculateBodyCost(currentBody);
 
     // Only wait if:
     // 1. The potential body is significantly better (more parts)
     // 2. We have enough capacity to build the better body
-    // 3. We're not too far from having enough energy (within 50% of capacity)
+    // 3. We're not at full capacity yet (if at full capacity, spawn what we can afford)
+    // 4. The current body cost is less than what we can afford (room for improvement)
     const isSignificantlyBetter = potentialBody.length > currentBody.length;
     const canAffordBetter = potentialBodyCost <= room.energyCapacityAvailable;
-    const closeToCapacity = room.energyAvailable >= (room.energyCapacityAvailable * 0.5);
+    const notAtFullCapacity = room.energyAvailable < room.energyCapacityAvailable;
+    const canAffordCurrentBody = currentBodyCost <= room.energyAvailable;
 
-    return isSignificantlyBetter && canAffordBetter && closeToCapacity;
+    // If we're at full capacity or the current body is the best we can afford, don't wait
+    if (!notAtFullCapacity || !canAffordCurrentBody) {
+      return false;
+    }
+
+    // Only wait if we can build something significantly better and we're not at capacity
+    return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
   }
 
   private getOptimalCreepBody(role: string, energyCapacity: number): BodyPartConstant[] {

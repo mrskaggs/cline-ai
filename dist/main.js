@@ -2896,10 +2896,15 @@ var init_SpawnManager = __esm({
         }
         const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable);
         const potentialBodyCost = this.calculateBodyCost(potentialBody);
+        const currentBodyCost = this.calculateBodyCost(currentBody);
         const isSignificantlyBetter = potentialBody.length > currentBody.length;
         const canAffordBetter = potentialBodyCost <= room.energyCapacityAvailable;
-        const closeToCapacity = room.energyAvailable >= room.energyCapacityAvailable * 0.5;
-        return isSignificantlyBetter && canAffordBetter && closeToCapacity;
+        const notAtFullCapacity = room.energyAvailable < room.energyCapacityAvailable;
+        const canAffordCurrentBody = currentBodyCost <= room.energyAvailable;
+        if (!notAtFullCapacity || !canAffordCurrentBody) {
+          return false;
+        }
+        return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
       }
       getOptimalCreepBody(role, energyCapacity) {
         const maxEnergy = Math.min(energyCapacity, 800);
