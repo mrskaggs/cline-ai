@@ -61,23 +61,23 @@ export const Settings = {
     maxCpuPerTick: 0.9,        // Maximum CPU usage per tick (as ratio)
   },
 
-  // Logging and debugging
+  // Logging and debugging - OPTIMIZED FOR PERFORMANCE
   logging: {
     enabled: true,
-    logLevel: 'INFO',          // DEBUG, INFO, WARN, ERROR
+    logLevel: 'WARN',          // WARN level reduces CPU overhead (was INFO)
     logCreepActions: false,    // Log individual creep actions
-    logSpawning: true,         // Log spawning decisions
+    logSpawning: false,        // Disabled for performance (was true)
     logRoomUpdates: false,     // Log room memory updates
   },
 
-  // Planning system settings
+  // Planning system settings - OPTIMIZED FOR RCL 2-3
   planning: {
     enabled: true,
-    planningCadence: 50,           // Ticks between planning runs
-    constructionCadence: 10,       // Ticks between construction site management
-    maxConstructionSites: 5,       // Maximum construction sites per room
-    trafficAnalysisEnabled: true,
-    trafficDataTTL: 1000,         // Ticks to keep traffic data
+    planningCadence: 100,          // Reduced frequency for CPU savings (was 50)
+    constructionCadence: 15,       // Slightly reduced frequency (was 10)
+    maxConstructionSites: 4,       // Reduced for focus (was 5)
+    trafficAnalysisEnabled: false, // Disabled until RCL 3+ (was true)
+    trafficDataTTL: 500,          // Reduced retention (was 1000)
     layoutAnalysisTTL: 5000,      // Ticks to keep layout analysis
     roadPlanningEnabled: true,
     buildingPlanningEnabled: true,
@@ -86,7 +86,7 @@ export const Settings = {
     minTrafficForRoad: 5,         // Minimum traffic count to justify a road
     roadPriorityThreshold: 10,    // Traffic score threshold for high priority roads
     minTrafficDataPoints: 20,     // Minimum traffic data points before road planning
-    constructionSiteMaxAge: 1500, // Maximum age for idle construction sites
+    constructionSiteMaxAge: 1200, // Reduced age for faster cleanup (was 1500)
   },
 
   // Game stance and behavior

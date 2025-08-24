@@ -104,30 +104,31 @@ var init_settings = __esm({
         maxCpuPerTick: 0.9
         // Maximum CPU usage per tick (as ratio)
       },
-      // Logging and debugging
+      // Logging and debugging - OPTIMIZED FOR PERFORMANCE
       logging: {
         enabled: true,
-        logLevel: "INFO",
-        // DEBUG, INFO, WARN, ERROR
+        logLevel: "WARN",
+        // WARN level reduces CPU overhead (was INFO)
         logCreepActions: false,
         // Log individual creep actions
-        logSpawning: true,
-        // Log spawning decisions
+        logSpawning: false,
+        // Disabled for performance (was true)
         logRoomUpdates: false
         // Log room memory updates
       },
-      // Planning system settings
+      // Planning system settings - OPTIMIZED FOR RCL 2-3
       planning: {
         enabled: true,
-        planningCadence: 50,
-        // Ticks between planning runs
-        constructionCadence: 10,
-        // Ticks between construction site management
-        maxConstructionSites: 5,
-        // Maximum construction sites per room
-        trafficAnalysisEnabled: true,
-        trafficDataTTL: 1e3,
-        // Ticks to keep traffic data
+        planningCadence: 100,
+        // Reduced frequency for CPU savings (was 50)
+        constructionCadence: 15,
+        // Slightly reduced frequency (was 10)
+        maxConstructionSites: 4,
+        // Reduced for focus (was 5)
+        trafficAnalysisEnabled: false,
+        // Disabled until RCL 3+ (was true)
+        trafficDataTTL: 500,
+        // Reduced retention (was 1000)
         layoutAnalysisTTL: 5e3,
         // Ticks to keep layout analysis
         roadPlanningEnabled: true,
@@ -142,8 +143,8 @@ var init_settings = __esm({
         // Traffic score threshold for high priority roads
         minTrafficDataPoints: 20,
         // Minimum traffic data points before road planning
-        constructionSiteMaxAge: 1500
-        // Maximum age for idle construction sites
+        constructionSiteMaxAge: 1200
+        // Reduced age for faster cleanup (was 1500)
       },
       // Game stance and behavior
       stance: "peace",
@@ -2782,10 +2783,17 @@ var init_SpawnManager = __esm({
         if (rcl === 1) {
           requiredCreeps["harvester"] = Math.max(2, sourceCount * 2);
         } else {
-          requiredCreeps["harvester"] = Math.max(1, sourceCount);
-          requiredCreeps["upgrader"] = rcl >= 3 ? 2 : 1;
-          const baseBuilders = constructionSites.length > 0 ? 2 : 1;
-          requiredCreeps["builder"] = Math.min(baseBuilders, Math.floor(rcl / 2) + 1);
+          requiredCreeps["harvester"] = sourceCount;
+          if (rcl === 2) {
+            requiredCreeps["upgrader"] = constructionSites.length > 5 ? 2 : 3;
+          } else {
+            requiredCreeps["upgrader"] = rcl >= 3 ? 2 : 1;
+          }
+          if (constructionSites.length > 0) {
+            requiredCreeps["builder"] = constructionSites.length > 3 ? 2 : 1;
+          } else {
+            requiredCreeps["builder"] = rcl >= 3 ? 1 : 0;
+          }
           if (rcl >= 3) {
             const containers = room.find(FIND_STRUCTURES, {
               filter: (structure) => structure.structureType === STRUCTURE_CONTAINER
@@ -2843,7 +2851,7 @@ var init_SpawnManager = __esm({
         if (energyAvailable >= 400) {
           return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
         } else if (energyAvailable >= 300) {
-          return [WORK, WORK, CARRY, MOVE];
+          return [WORK, WORK, WORK, CARRY, MOVE];
         } else if (energyAvailable >= 200) {
           return [WORK, CARRY, MOVE];
         } else {
@@ -2856,7 +2864,7 @@ var init_SpawnManager = __esm({
         } else if (energyAvailable >= 400) {
           return [WORK, WORK, CARRY, CARRY, MOVE];
         } else if (energyAvailable >= 300) {
-          return [WORK, WORK, CARRY, MOVE];
+          return [WORK, WORK, WORK, CARRY, MOVE];
         } else if (energyAvailable >= 200) {
           return [WORK, CARRY, MOVE];
         } else {
@@ -2868,6 +2876,8 @@ var init_SpawnManager = __esm({
           return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
         } else if (energyAvailable >= 350) {
           return [WORK, CARRY, CARRY, MOVE, MOVE];
+        } else if (energyAvailable >= 300) {
+          return [WORK, WORK, CARRY, CARRY, MOVE];
         } else if (energyAvailable >= 250) {
           return [WORK, CARRY, MOVE, MOVE];
         } else if (energyAvailable >= 200) {

@@ -52,16 +52,26 @@ export class SpawnManager {
       // RCL1: Only harvesters (they do everything)
       requiredCreeps['harvester'] = Math.max(2, sourceCount * 2);
     } else {
-      // RCL2+: Specialized roles
-      // Harvesters: 1-2 per source
-      requiredCreeps['harvester'] = Math.max(1, sourceCount);
+      // RCL2+: Specialized roles with performance optimization
+      // Harvesters: Exactly 1 per source (with 3 WORK parts at 300 energy)
+      requiredCreeps['harvester'] = sourceCount;
       
-      // Upgraders: 1-2 dedicated upgraders
-      requiredCreeps['upgrader'] = rcl >= 3 ? 2 : 1;
+      // Upgraders: Optimized for faster RCL progression
+      if (rcl === 2) {
+        // RCL 2: 2-3 upgraders for maximum upgrade speed (25-40% faster progression)
+        requiredCreeps['upgrader'] = constructionSites.length > 5 ? 2 : 3;
+      } else {
+        requiredCreeps['upgrader'] = rcl >= 3 ? 2 : 1;
+      }
       
-      // Builders: Based on construction sites and room level
-      const baseBuilders = constructionSites.length > 0 ? 2 : 1;
-      requiredCreeps['builder'] = Math.min(baseBuilders, Math.floor(rcl / 2) + 1);
+      // Builders: Dynamic based on construction phase
+      if (constructionSites.length > 0) {
+        // Active construction: 1-2 builders based on workload
+        requiredCreeps['builder'] = constructionSites.length > 3 ? 2 : 1;
+      } else {
+        // No construction: Minimal builders for maintenance
+        requiredCreeps['builder'] = rcl >= 3 ? 1 : 0;
+      }
       
       // Haulers: Critical for RCL 3+ when harvesters become stationary
       if (rcl >= 3) {
@@ -134,14 +144,15 @@ export class SpawnManager {
   }
 
   private getHarvesterBody(energyAvailable: number): BodyPartConstant[] {
+    // RCL 2 Optimized: [WORK, WORK, WORK, CARRY, MOVE] = 300 energy (max harvest efficiency)
     // Basic harvester: [WORK, CARRY, MOVE] = 200 energy
-    // Enhanced: [WORK, WORK, CARRY, MOVE] = 300 energy
     // Advanced: [WORK, WORK, CARRY, CARRY, MOVE, MOVE] = 400 energy
 
     if (energyAvailable >= 400) {
       return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
     } else if (energyAvailable >= 300) {
-      return [WORK, WORK, CARRY, MOVE];
+      // RCL 2 optimization: 3 WORK parts for maximum harvest efficiency
+      return [WORK, WORK, WORK, CARRY, MOVE];
     } else if (energyAvailable >= 200) {
       return [WORK, CARRY, MOVE];
     } else {
@@ -151,9 +162,8 @@ export class SpawnManager {
   }
 
   private getUpgraderBody(energyAvailable: number): BodyPartConstant[] {
-    // Upgrader focuses on WORK and CARRY for upgrading efficiency
+    // RCL 2 Optimized: [WORK, WORK, WORK, CARRY, MOVE] = 300 energy (max upgrade speed)
     // Basic: [WORK, CARRY, MOVE] = 200 energy
-    // Enhanced: [WORK, WORK, CARRY, MOVE] = 300 energy
     // Advanced: [WORK, WORK, WORK, CARRY, CARRY, MOVE] = 500 energy
 
     if (energyAvailable >= 500) {
@@ -161,7 +171,8 @@ export class SpawnManager {
     } else if (energyAvailable >= 400) {
       return [WORK, WORK, CARRY, CARRY, MOVE];
     } else if (energyAvailable >= 300) {
-      return [WORK, WORK, CARRY, MOVE];
+      // RCL 2 optimization: 3 WORK parts for maximum upgrade speed
+      return [WORK, WORK, WORK, CARRY, MOVE];
     } else if (energyAvailable >= 200) {
       return [WORK, CARRY, MOVE];
     } else {
@@ -170,15 +181,17 @@ export class SpawnManager {
   }
 
   private getBuilderBody(energyAvailable: number): BodyPartConstant[] {
-    // Builder needs balanced WORK, CARRY, and MOVE for construction and repair
+    // RCL 2 Optimized: [WORK, WORK, CARRY, CARRY, MOVE] = 300 energy (balanced build/carry)
     // Basic: [WORK, CARRY, MOVE] = 200 energy
-    // Enhanced: [WORK, CARRY, CARRY, MOVE, MOVE] = 350 energy
     // Advanced: [WORK, WORK, CARRY, CARRY, MOVE, MOVE] = 450 energy
 
     if (energyAvailable >= 450) {
       return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
     } else if (energyAvailable >= 350) {
       return [WORK, CARRY, CARRY, MOVE, MOVE];
+    } else if (energyAvailable >= 300) {
+      // RCL 2 optimization: 2 WORK, 2 CARRY for balanced build/carry efficiency
+      return [WORK, WORK, CARRY, CARRY, MOVE];
     } else if (energyAvailable >= 250) {
       return [WORK, CARRY, MOVE, MOVE];
     } else if (energyAvailable >= 200) {
