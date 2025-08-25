@@ -159,7 +159,7 @@ export class SpawnManager {
 
     switch (role) {
       case 'harvester':
-        return this.getHarvesterBody(energyAvailable);
+        return this.getHarvesterBody(energyAvailable, room);
       case 'hauler':
         return Hauler.getBody(energyAvailable);
       case 'upgrader':
@@ -174,21 +174,45 @@ export class SpawnManager {
     }
   }
 
-  private getHarvesterBody(energyAvailable: number): BodyPartConstant[] {
-    // RCL 2 Optimized: [WORK, WORK, WORK, CARRY, MOVE] = 300 energy (max harvest efficiency)
-    // Basic harvester: [WORK, CARRY, MOVE] = 200 energy
-    // Advanced: [WORK, WORK, CARRY, CARRY, MOVE, MOVE] = 400 energy
+  private getHarvesterBody(energyAvailable: number, room: Room): BodyPartConstant[] {
+    const rcl = room.controller ? room.controller.level : 1;
+    
+    // Check if we have containers (indicates stationary mining at RCL 3+)
+    const hasContainers = rcl >= 3 && room.find(FIND_STRUCTURES, {
+      filter: (structure) => structure.structureType === STRUCTURE_CONTAINER
+    }).length > 0;
 
-    if (energyAvailable >= 400) {
-      return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
-    } else if (energyAvailable >= 300) {
-      // RCL 2 optimization: 3 WORK parts for maximum harvest efficiency
-      return [WORK, WORK, WORK, CARRY, MOVE];
-    } else if (energyAvailable >= 200) {
-      return [WORK, CARRY, MOVE];
+    if (hasContainers) {
+      // RCL 3+ Stationary Mining: Optimize for maximum WORK parts, minimal CARRY/MOVE
+      if (energyAvailable >= 600) {
+        // Perfect source utilization: 5 WORK = 10 energy/tick (matches source regen)
+        return [WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+      } else if (energyAvailable >= 500) {
+        // High efficiency: 4 WORK = 8 energy/tick
+        return [WORK, WORK, WORK, WORK, CARRY, MOVE];
+      } else if (energyAvailable >= 350) {
+        // Good efficiency: 3 WORK = 6 energy/tick, no movement needed
+        return [WORK, WORK, WORK, CARRY];
+      } else if (energyAvailable >= 300) {
+        // Minimum viable stationary: 3 WORK with movement capability
+        return [WORK, WORK, WORK, CARRY, MOVE];
+      } else {
+        // Fallback to mobile harvester body
+        return [WORK, CARRY, MOVE];
+      }
     } else {
-      // Emergency case - spawn the cheapest possible creep
-      return [WORK, CARRY, MOVE];
+      // RCL 1-2 Mobile Harvesting: Original logic for mobile harvesters
+      if (energyAvailable >= 400) {
+        return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
+      } else if (energyAvailable >= 300) {
+        // RCL 2 optimization: 3 WORK parts for maximum harvest efficiency
+        return [WORK, WORK, WORK, CARRY, MOVE];
+      } else if (energyAvailable >= 200) {
+        return [WORK, CARRY, MOVE];
+      } else {
+        // Emergency case - spawn the cheapest possible creep
+        return [WORK, CARRY, MOVE];
+      }
     }
   }
 
@@ -244,7 +268,7 @@ export class SpawnManager {
     }
 
     // Calculate what body we could build with full energy capacity
-    const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable);
+    const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable, room);
     const potentialBodyCost = this.calculateBodyCost(potentialBody);
     const currentBodyCost = this.calculateBodyCost(currentBody);
 
@@ -267,14 +291,14 @@ export class SpawnManager {
     return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
   }
 
-  private getOptimalCreepBody(role: string, energyCapacity: number): BodyPartConstant[] {
+  private getOptimalCreepBody(role: string, energyCapacity: number, room: Room): BodyPartConstant[] {
     // Get the best possible body for this role given the energy capacity
     // Cap at reasonable limits to avoid overly expensive creeps
     const maxEnergy = Math.min(energyCapacity, 800); // Reasonable cap for early game
 
     switch (role) {
       case 'harvester':
-        return this.getHarvesterBody(maxEnergy);
+        return this.getHarvesterBody(maxEnergy, room);
       case 'hauler':
         return Hauler.getBody(maxEnergy);
       case 'upgrader':

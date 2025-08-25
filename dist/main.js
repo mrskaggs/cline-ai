@@ -3380,7 +3380,7 @@ var init_SpawnManager = __esm({
         const energyAvailable = room.energyAvailable;
         switch (role) {
           case "harvester":
-            return this.getHarvesterBody(energyAvailable);
+            return this.getHarvesterBody(energyAvailable, room);
           case "hauler":
             return Hauler.getBody(energyAvailable);
           case "upgrader":
@@ -3394,15 +3394,33 @@ var init_SpawnManager = __esm({
             return [];
         }
       }
-      getHarvesterBody(energyAvailable) {
-        if (energyAvailable >= 400) {
-          return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
-        } else if (energyAvailable >= 300) {
-          return [WORK, WORK, WORK, CARRY, MOVE];
-        } else if (energyAvailable >= 200) {
-          return [WORK, CARRY, MOVE];
+      getHarvesterBody(energyAvailable, room) {
+        const rcl = room.controller ? room.controller.level : 1;
+        const hasContainers = rcl >= 3 && room.find(FIND_STRUCTURES, {
+          filter: (structure) => structure.structureType === STRUCTURE_CONTAINER
+        }).length > 0;
+        if (hasContainers) {
+          if (energyAvailable >= 600) {
+            return [WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+          } else if (energyAvailable >= 500) {
+            return [WORK, WORK, WORK, WORK, CARRY, MOVE];
+          } else if (energyAvailable >= 350) {
+            return [WORK, WORK, WORK, CARRY];
+          } else if (energyAvailable >= 300) {
+            return [WORK, WORK, WORK, CARRY, MOVE];
+          } else {
+            return [WORK, CARRY, MOVE];
+          }
         } else {
-          return [WORK, CARRY, MOVE];
+          if (energyAvailable >= 400) {
+            return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
+          } else if (energyAvailable >= 300) {
+            return [WORK, WORK, WORK, CARRY, MOVE];
+          } else if (energyAvailable >= 200) {
+            return [WORK, CARRY, MOVE];
+          } else {
+            return [WORK, CARRY, MOVE];
+          }
         }
       }
       getUpgraderBody(energyAvailable) {
@@ -3440,7 +3458,7 @@ var init_SpawnManager = __esm({
         if (existingCreeps.length === 0) {
           return false;
         }
-        const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable);
+        const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable, room);
         const potentialBodyCost = this.calculateBodyCost(potentialBody);
         const currentBodyCost = this.calculateBodyCost(currentBody);
         const isSignificantlyBetter = potentialBody.length > currentBody.length;
@@ -3452,11 +3470,11 @@ var init_SpawnManager = __esm({
         }
         return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
       }
-      getOptimalCreepBody(role, energyCapacity) {
+      getOptimalCreepBody(role, energyCapacity, room) {
         const maxEnergy = Math.min(energyCapacity, 800);
         switch (role) {
           case "harvester":
-            return this.getHarvesterBody(maxEnergy);
+            return this.getHarvesterBody(maxEnergy, room);
           case "hauler":
             return Hauler.getBody(maxEnergy);
           case "upgrader":
