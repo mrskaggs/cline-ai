@@ -8,10 +8,13 @@ interface CreepMemory {
   working?: boolean;
   hauling?: boolean;
   homeRoom: string;
+  // Harvester-specific properties
+  assignedSource?: Id<Source>;
   // Scout-specific properties
   targetRoom?: string;
   scoutingPhase?: 'moving' | 'exploring' | 'returning';
   lastExplored?: number;
+  arrivalTick?: number;
 }
 
 interface RoomMemory {

@@ -6,6 +6,7 @@ export interface ScoutMemory {
     homeRoom: string;
     scoutingPhase: 'moving' | 'exploring' | 'returning';
     lastExplored?: number;
+    arrivalTick?: number;
 }
 
 export class Scout {
@@ -56,7 +57,7 @@ export class Scout {
         }
     }
 
-    private static moveToTarget(creep: Creep, currentRoomName: string): void {
+    private static moveToTarget(creep: Creep, _currentRoomName: string): void {
         const memory = creep.memory as ScoutMemory;
         
         if (!memory.targetRoom) {
@@ -120,27 +121,40 @@ export class Scout {
             }
             // Don't switch to exploring until we're actually in the target room
         } else {
-            // Room name matches target - but let's double-check we're actually there
-            console.log(`Scout ${creep.name}: Room comparison suggests arrival at ${memory.targetRoom}, but verifying actual room: ${creep.room.name}`);
+            // Room name matches target - add delay before switching to exploration
+            console.log(`Scout ${creep.name}: Arrived at target room ${memory.targetRoom}, waiting to ensure stable position`);
             
+            // Add a small delay to ensure the creep is fully in the room
+            if (!memory.arrivalTick) {
+                memory.arrivalTick = Game.time;
+                console.log(`Scout ${creep.name}: Recording arrival at tick ${Game.time}`);
+                return;
+            }
+            
+            // Wait at least 2 ticks to ensure stable room transition
+            const ticksInRoom = Game.time - memory.arrivalTick;
+            if (ticksInRoom < 2) {
+                console.log(`Scout ${creep.name}: Waiting for stable position (${ticksInRoom}/2 ticks)`);
+                return;
+            }
+            
+            // Final verification before switching to exploration
             if (creep.room.name === memory.targetRoom) {
-                console.log(`Scout ${creep.name}: Confirmed arrival at target room ${memory.targetRoom}, switching to exploration phase`);
+                console.log(`Scout ${creep.name}: Confirmed stable arrival at ${memory.targetRoom} after ${ticksInRoom} ticks, switching to exploration`);
                 memory.scoutingPhase = 'exploring';
                 delete memory.lastExplored; // Reset exploration timer for new room
+                delete memory.arrivalTick; // Clean up arrival tracking
                 Logger.info(`Scout ${creep.name}: Arrived at ${memory.targetRoom}, beginning exploration`);
             } else {
-                // This is the bug! Room comparison logic is inconsistent
-                console.log(`Scout ${creep.name}: CRITICAL BUG - Room comparison inconsistency!`);
-                console.log(`Scout ${creep.name}: Comparison (creep.room.name !== memory.targetRoom) returned false`);
-                console.log(`Scout ${creep.name}: But creep.room.name=${creep.room.name}, memory.targetRoom=${memory.targetRoom}`);
-                console.log(`Scout ${creep.name}: This suggests a Screeps engine timing issue - staying in moving phase`);
-                // Don't switch to exploration, stay in moving phase and keep trying
+                console.log(`Scout ${creep.name}: Room mismatch after ${ticksInRoom} ticks - Current: ${creep.room.name}, Target: ${memory.targetRoom}`);
+                console.log(`Scout ${creep.name}: Resetting arrival tracking and continuing movement`);
+                delete memory.arrivalTick;
                 return;
             }
         }
     }
 
-    private static exploreRoom(creep: Creep, currentRoomName: string): void {
+    private static exploreRoom(creep: Creep, _currentRoomName: string): void {
         const memory = creep.memory as ScoutMemory;
         const room = creep.room;
 
@@ -185,7 +199,7 @@ export class Scout {
         }
     }
 
-    private static returnHome(creep: Creep, currentRoomName: string): void {
+    private static returnHome(creep: Creep, _currentRoomName: string): void {
         const memory = creep.memory as ScoutMemory;
         
         if (creep.room.name !== memory.homeRoom) {

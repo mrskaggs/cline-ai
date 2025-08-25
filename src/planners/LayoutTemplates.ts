@@ -87,20 +87,16 @@ export class LayoutTemplates {
   }
 
   /**
-   * RCL 3 Template - Add tower, containers, and more extensions
+   * RCL 3 Template - Add tower and more extensions (containers now handled by dynamic placement)
    */
   private static getRCL3Template(): LayoutTemplate {
     return {
-      name: 'RCL3_Tower_Containers',
+      name: 'RCL3_Tower_Extensions',
       rcl: 3,
       centerOffset: { x: 0, y: 0 },
       buildings: [
         // Tower for defense
         { structureType: STRUCTURE_TOWER, offset: { x: 2, y: 0 }, priority: 1 },
-        // Containers for energy logistics (placed near expected source/controller positions)
-        { structureType: STRUCTURE_CONTAINER, offset: { x: -3, y: -3 }, priority: 2 },
-        { structureType: STRUCTURE_CONTAINER, offset: { x: 3, y: 3 }, priority: 2 },
-        { structureType: STRUCTURE_CONTAINER, offset: { x: 0, y: 3 }, priority: 3 },
         // Additional extensions (5 more for total of 10)
         { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: -1 }, priority: 2 },
         { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 1 }, priority: 2 },

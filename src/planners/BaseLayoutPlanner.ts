@@ -172,6 +172,12 @@ export class BaseLayoutPlanner {
     existingBuildings: PlannedBuilding[]
   ): PlannedBuilding[] {
     const buildings: PlannedBuilding[] = [];
+    
+    // Special handling for containers - use source-optimized placement
+    if (structureType === STRUCTURE_CONTAINER) {
+      return this.planSourceOptimizedContainers(room, count, keyPositions, existingBuildings);
+    }
+    
     const centralArea = TerrainAnalyzer.findCentralArea(room);
     
     // Get suitable positions based on structure type
@@ -207,6 +213,201 @@ export class BaseLayoutPlanner {
     });
     
     return buildings;
+  }
+
+  /**
+   * Plan containers optimized for source positions
+   */
+  private static planSourceOptimizedContainers(
+    room: Room,
+    maxContainers: number,
+    keyPositions: KeyPositions,
+    existingBuildings: PlannedBuilding[]
+  ): PlannedBuilding[] {
+    const buildings: PlannedBuilding[] = [];
+    const occupiedPositions = new Set(
+      existingBuildings.map(b => `${b.pos.x},${b.pos.y}`)
+    );
+    
+    Logger.info(`BaseLayoutPlanner: Planning source-optimized containers for room ${room.name}`);
+    
+    let containersPlaced = 0;
+    
+    // Priority 1: Source containers (highest priority)
+    for (const source of keyPositions.sources) {
+      if (containersPlaced >= maxContainers) break;
+      
+      const containerPos = this.findOptimalContainerPosition(room, source, occupiedPositions);
+      if (containerPos) {
+        buildings.push({
+          structureType: STRUCTURE_CONTAINER,
+          pos: containerPos,
+          priority: 90, // High priority for source containers
+          rclRequired: 3,
+          placed: false,
+          reason: `Source container for energy source at ${source.x},${source.y}`
+        });
+        
+        occupiedPositions.add(`${containerPos.x},${containerPos.y}`);
+        containersPlaced++;
+        
+        Logger.info(`BaseLayoutPlanner: Planned source container at ${containerPos.x},${containerPos.y} for source at ${source.x},${source.y}`);
+      }
+    }
+    
+    // Priority 2: Controller container (if space available)
+    if (containersPlaced < maxContainers && keyPositions.controller) {
+      const controllerContainerPos = this.findOptimalContainerPosition(room, keyPositions.controller, occupiedPositions);
+      if (controllerContainerPos) {
+        buildings.push({
+          structureType: STRUCTURE_CONTAINER,
+          pos: controllerContainerPos,
+          priority: 80, // High priority for controller container
+          rclRequired: 3,
+          placed: false,
+          reason: `Controller container for upgrader efficiency`
+        });
+        
+        occupiedPositions.add(`${controllerContainerPos.x},${controllerContainerPos.y}`);
+        containersPlaced++;
+        
+        Logger.info(`BaseLayoutPlanner: Planned controller container at ${controllerContainerPos.x},${controllerContainerPos.y}`);
+      }
+    }
+    
+    // Priority 3: Mineral container (RCL 6+ when extractor is available)
+    if (containersPlaced < maxContainers && keyPositions.mineral && room.controller && room.controller.level >= 6) {
+      const mineralContainerPos = this.findOptimalContainerPosition(room, keyPositions.mineral, occupiedPositions);
+      if (mineralContainerPos) {
+        buildings.push({
+          structureType: STRUCTURE_CONTAINER,
+          pos: mineralContainerPos,
+          priority: 60, // Lower priority for mineral container
+          rclRequired: 6,
+          placed: false,
+          reason: `Mineral container for mineral harvesting`
+        });
+        
+        containersPlaced++;
+        
+        Logger.info(`BaseLayoutPlanner: Planned mineral container at ${mineralContainerPos.x},${mineralContainerPos.y}`);
+      }
+    }
+    
+    Logger.info(`BaseLayoutPlanner: Planned ${containersPlaced} source-optimized containers for room ${room.name}`);
+    return buildings;
+  }
+
+  /**
+   * Find optimal container position adjacent to a source/controller/mineral
+   */
+  private static findOptimalContainerPosition(
+    room: Room,
+    target: RoomPosition,
+    occupiedPositions: Set<string>
+  ): RoomPosition | null {
+    // Check all 8 adjacent positions around the target
+    const adjacentPositions = [
+      { x: target.x - 1, y: target.y - 1 },
+      { x: target.x, y: target.y - 1 },
+      { x: target.x + 1, y: target.y - 1 },
+      { x: target.x - 1, y: target.y },
+      { x: target.x + 1, y: target.y },
+      { x: target.x - 1, y: target.y + 1 },
+      { x: target.x, y: target.y + 1 },
+      { x: target.x + 1, y: target.y + 1 }
+    ];
+    
+    const candidates: { pos: RoomPosition; score: number }[] = [];
+    
+    for (const offset of adjacentPositions) {
+      // Check bounds
+      if (offset.x < 1 || offset.x > 48 || offset.y < 1 || offset.y > 48) continue;
+      
+      const pos = new RoomPosition(offset.x, offset.y, room.name);
+      const posKey = `${pos.x},${pos.y}`;
+      
+      // Skip if position is already occupied
+      if (occupiedPositions.has(posKey)) continue;
+      
+      // Check if position is suitable for container
+      if (!this.isValidContainerPosition(room, pos)) continue;
+      
+      // Score position based on accessibility and terrain
+      const score = this.scoreContainerPosition(room, pos, target);
+      candidates.push({ pos, score });
+    }
+    
+    if (candidates.length === 0) {
+      Logger.warn(`BaseLayoutPlanner: No valid container positions found adjacent to ${target.x},${target.y} in room ${room.name}`);
+      return null;
+    }
+    
+    // Sort by score (higher is better) and return best position
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]!.pos;
+  }
+
+  /**
+   * Check if a position is valid for container placement
+   */
+  private static isValidContainerPosition(room: Room, pos: RoomPosition): boolean {
+    // Check terrain - can't build on walls
+    const terrain = room.getTerrain().get(pos.x, pos.y);
+    if (terrain & TERRAIN_MASK_WALL) return false;
+    
+    // Check for existing structures that would block container
+    const structures = pos.lookFor(LOOK_STRUCTURES);
+    const blockingStructures = structures.filter(s => 
+      s.structureType !== STRUCTURE_ROAD // Roads can coexist with containers
+    );
+    if (blockingStructures.length > 0) return false;
+    
+    // Check for existing construction sites
+    const sites = pos.lookFor(LOOK_CONSTRUCTION_SITES);
+    if (sites.length > 0) return false;
+    
+    return true;
+  }
+
+  /**
+   * Score a container position based on accessibility and terrain
+   */
+  private static scoreContainerPosition(room: Room, pos: RoomPosition, _target: RoomPosition): number {
+    let score = 100;
+    
+    // Prefer positions that are not swamps (easier to build and access)
+    const terrain = room.getTerrain().get(pos.x, pos.y);
+    if (terrain & TERRAIN_MASK_SWAMP) {
+      score -= 20;
+    }
+    
+    // Prefer positions with more open adjacent spaces (better for hauler access)
+    let openSpaces = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue; // Skip the container position itself
+        
+        const checkX = pos.x + dx;
+        const checkY = pos.y + dy;
+        
+        if (checkX < 1 || checkX > 48 || checkY < 1 || checkY > 48) continue;
+        
+        const checkTerrain = room.getTerrain().get(checkX, checkY);
+        if (!(checkTerrain & TERRAIN_MASK_WALL)) {
+          openSpaces++;
+        }
+      }
+    }
+    
+    score += openSpaces * 5; // Bonus for each open adjacent space
+    
+    // Small bonus for positions closer to room center (better for hauler pathing)
+    const roomCenter = new RoomPosition(25, 25, room.name);
+    const distanceToCenter = PathingUtils.getDistance(pos, roomCenter);
+    score += Math.max(0, 25 - distanceToCenter);
+    
+    return score;
   }
 
   /**
@@ -562,6 +763,7 @@ export class BaseLayoutPlanner {
       [STRUCTURE_SPAWN]: 1,
       [STRUCTURE_EXTENSION]: 2,  // Extensions are available starting at RCL 2
       [STRUCTURE_TOWER]: 3,
+      [STRUCTURE_CONTAINER]: 3,  // Containers are available starting at RCL 3
       [STRUCTURE_STORAGE]: 4,
       [STRUCTURE_LINK]: 5,
       [STRUCTURE_TERMINAL]: 6,

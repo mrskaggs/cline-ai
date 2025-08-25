@@ -65,10 +65,21 @@ export class SpawnManager {
         requiredCreeps['upgrader'] = rcl >= 3 ? 2 : 1;
       }
       
-      // Builders: Dynamic based on construction phase
+      // Builders: Dynamic based on construction phase and RCL
       if (constructionSites.length > 0) {
-        // Active construction: 1-2 builders based on workload
-        requiredCreeps['builder'] = constructionSites.length > 3 ? 2 : 1;
+        if (rcl >= 3) {
+          // RCL3+: More builders due to increased complexity (towers, more extensions, containers)
+          if (constructionSites.length > 10) {
+            requiredCreeps['builder'] = 3; // Heavy construction phase
+          } else if (constructionSites.length > 5) {
+            requiredCreeps['builder'] = 2; // Moderate construction
+          } else {
+            requiredCreeps['builder'] = 1; // Light construction
+          }
+        } else {
+          // RCL2: Original logic
+          requiredCreeps['builder'] = constructionSites.length > 3 ? 2 : 1;
+        }
       } else {
         // No construction: Minimal builders for maintenance
         requiredCreeps['builder'] = rcl >= 3 ? 1 : 0;

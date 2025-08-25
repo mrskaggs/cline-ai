@@ -34,55 +34,63 @@ export class Hauler {
    * Uses StorageManager for optimal source selection based on room strategy
    */
   private static collectEnergy(creep: Creep): void {
-    // Use StorageManager to get optimal energy sources based on current strategy
-    const optimalSources = StorageManager.getOptimalEnergySources(creep.room);
-    
-    if (optimalSources.length > 0) {
-      // Find the best source (closest with most energy)
-      let bestSource: Structure | Resource | null = null;
-      let bestScore = 0;
-
-      for (const source of optimalSources) {
-        let energyAmount = 0;
-        let distance = 0;
-
-        // Check if it's a structure with store
-        if ('structureType' in source && 'store' in source) {
-          const structure = source as StructureContainer | StructureStorage;
-          energyAmount = structure.store[RESOURCE_ENERGY] || 0;
-          distance = creep.pos.getRangeTo(structure);
-        } 
-        // Check if it's a dropped resource
-        else if ('resourceType' in source && 'amount' in source) {
-          const resource = source as unknown as Resource;
-          energyAmount = resource.amount;
-          distance = creep.pos.getRangeTo(resource);
-        }
-
-        // Score based on energy amount and proximity (higher is better)
-        const score = energyAmount - (distance * 10);
-        if (score > bestScore) {
-          bestScore = score;
-          bestSource = source;
-        }
-      }
-
-      if (bestSource) {
-        let result: ScreepsReturnCode;
+    // Try StorageManager first for RCL 4+ rooms with storage
+    if (creep.room.controller && creep.room.controller.level >= 4) {
+      try {
+        const optimalSources = StorageManager.getOptimalEnergySources(creep.room);
         
-        // Check if it's a structure
-        if ('structureType' in bestSource) {
-          result = creep.withdraw(bestSource as Structure, RESOURCE_ENERGY);
-        } 
-        // Otherwise it's a dropped resource
-        else {
-          result = creep.pickup(bestSource as Resource);
-        }
+        if (optimalSources.length > 0) {
+          // Find the best source (closest with most energy)
+          let bestSource: Structure | Resource | null = null;
+          let bestScore = 0;
 
-        if (result === ERR_NOT_IN_RANGE) {
-          creep.moveTo(bestSource, { visualizePathStyle: { stroke: '#ffaa00' } });
+          for (const source of optimalSources) {
+            let energyAmount = 0;
+            let distance = 0;
+
+            // Check if it's a structure with store
+            if ('structureType' in source && 'store' in source) {
+              const structure = source as StructureContainer | StructureStorage;
+              energyAmount = structure.store[RESOURCE_ENERGY] || 0;
+              distance = creep.pos.getRangeTo(structure);
+            } 
+            // Check if it's a dropped resource
+            else if ('resourceType' in source && 'amount' in source) {
+              const resource = source as unknown as Resource;
+              energyAmount = resource.amount;
+              distance = creep.pos.getRangeTo(resource);
+            }
+
+            // Score based on energy amount and proximity (higher is better)
+            const score = energyAmount - (distance * 10);
+            if (score > bestScore) {
+              bestScore = score;
+              bestSource = source;
+            }
+          }
+
+          if (bestSource) {
+            let result: ScreepsReturnCode;
+            
+            // Check if it's a structure
+            if ('structureType' in bestSource) {
+              result = creep.withdraw(bestSource as Structure, RESOURCE_ENERGY);
+            } 
+            // Otherwise it's a dropped resource
+            else {
+              result = creep.pickup(bestSource as Resource);
+            }
+
+            if (result === ERR_NOT_IN_RANGE) {
+              creep.moveTo(bestSource, { visualizePathStyle: { stroke: '#ffaa00' } });
+            } else if (result !== OK) {
+              Logger.debug(`Hauler ${creep.name}: Failed to collect from optimal source: ${result}`, 'Hauler');
+            }
+            return;
+          }
         }
-        return;
+      } catch (error) {
+        Logger.warn(`Hauler ${creep.name}: StorageManager error, falling back to basic collection: ${error}`, 'Hauler');
       }
     }
 
