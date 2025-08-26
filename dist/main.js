@@ -92,8 +92,12 @@ var init_settings = __esm({
         // Range to look for hostiles
         repairThreshold: 0.8,
         // Repair structures below this health ratio
-        roadRepairThreshold: 0.5
-        // Repair roads below this health ratio
+        roadRepairThreshold: 0.6,
+        // Repair roads below this health ratio (improved from 0.5)
+        emergencyRepairThreshold: 0.1,
+        // Emergency repair threshold for critical structures
+        rampartRepairThreshold: 0.8
+        // Repair ramparts below this health ratio
       },
       // CPU and performance settings
       cpu: {
@@ -3313,20 +3317,26 @@ var init_SpawnManager = __esm({
           } else {
             requiredCreeps["upgrader"] = rcl >= 3 ? 2 : 1;
           }
-          if (constructionSites.length > 0) {
-            if (rcl >= 3) {
-              if (constructionSites.length > 10) {
-                requiredCreeps["builder"] = 3;
-              } else if (constructionSites.length > 5) {
-                requiredCreeps["builder"] = 2;
-              } else {
-                requiredCreeps["builder"] = 1;
-              }
+          const repairWorkload = this.calculateRepairWorkload(room);
+          const totalWorkload = constructionSites.length + repairWorkload;
+          if (rcl >= 3) {
+            if (totalWorkload > 15) {
+              requiredCreeps["builder"] = 4;
+            } else if (totalWorkload > 10) {
+              requiredCreeps["builder"] = 3;
+            } else if (totalWorkload > 5) {
+              requiredCreeps["builder"] = 2;
             } else {
-              requiredCreeps["builder"] = constructionSites.length > 3 ? 2 : 1;
+              requiredCreeps["builder"] = 1;
             }
           } else {
-            requiredCreeps["builder"] = rcl >= 3 ? 1 : 0;
+            if (totalWorkload > 8) {
+              requiredCreeps["builder"] = 3;
+            } else if (totalWorkload > 3) {
+              requiredCreeps["builder"] = 2;
+            } else {
+              requiredCreeps["builder"] = totalWorkload > 0 ? 1 : 0;
+            }
           }
           if (rcl >= 3) {
             const containers = room.find(FIND_STRUCTURES, {
@@ -3511,6 +3521,25 @@ var init_SpawnManager = __esm({
           }
         }, 0);
       }
+      calculateRepairWorkload(room) {
+        const structures = room.find(FIND_STRUCTURES);
+        let repairWorkload = 0;
+        for (const structure of structures) {
+          const healthPercent = structure.hits / structure.hitsMax;
+          if (healthPercent < 0.1 && structure.structureType !== STRUCTURE_WALL) {
+            repairWorkload += 5;
+          } else if (structure.structureType === STRUCTURE_RAMPART && healthPercent < 0.8) {
+            repairWorkload += 3;
+          } else if (healthPercent < 0.8 && (structure.structureType === STRUCTURE_SPAWN || structure.structureType === STRUCTURE_EXTENSION || structure.structureType === STRUCTURE_TOWER || structure.structureType === STRUCTURE_STORAGE)) {
+            repairWorkload += 2;
+          } else if (healthPercent < 0.6 && (structure.structureType === STRUCTURE_ROAD || structure.structureType === STRUCTURE_CONTAINER)) {
+            repairWorkload += 1;
+          } else if (healthPercent < 0.8 && structure.structureType !== STRUCTURE_WALL && structure.structureType !== STRUCTURE_RAMPART) {
+            repairWorkload += 1;
+          }
+        }
+        return repairWorkload;
+      }
       spawnCreep(spawn, role, body, homeRoom) {
         const name = `${role}_${Game.time}`;
         const result = spawn.spawnCreep(body, name, {
@@ -3525,6 +3554,181 @@ var init_SpawnManager = __esm({
         } else if (result === ERR_NOT_ENOUGH_ENERGY) {
         } else {
           Logger.warn(`Failed to spawn ${role}: ${result}`, "SpawnManager");
+        }
+      }
+    };
+  }
+});
+
+// src/managers/StructureReplacementManager.ts
+var StructureReplacementManager_exports = {};
+__export(StructureReplacementManager_exports, {
+  StructureReplacementManager: () => StructureReplacementManager
+});
+var StructureReplacementManager;
+var init_StructureReplacementManager = __esm({
+  "src/managers/StructureReplacementManager.ts"() {
+    "use strict";
+    init_Logger();
+    StructureReplacementManager = class {
+      /**
+       * Check for missing structures that should be rebuilt and add them to the room plan
+       */
+      static checkAndReplaceDecayedStructures(room) {
+        try {
+          const roomMemory = Memory.rooms[room.name];
+          if (!roomMemory || !roomMemory.plan) {
+            return;
+          }
+          const plan = roomMemory.plan;
+          const missingStructures = this.findMissingStructures(room, plan);
+          if (missingStructures.length > 0) {
+            Logger.warn(`Found ${missingStructures.length} missing structures in room ${room.name}`, "StructureReplacement");
+            for (const missing of missingStructures) {
+              const existingPlan = plan.buildings.find(
+                (building) => building.pos.x === missing.pos.x && building.pos.y === missing.pos.y && building.structureType === missing.structureType
+              );
+              if (existingPlan) {
+                if (existingPlan.placed) {
+                  existingPlan.placed = false;
+                  Logger.info(`Marked ${missing.structureType} at ${missing.pos.x},${missing.pos.y} for rebuilding`, "StructureReplacement");
+                }
+              } else {
+                plan.buildings.push({
+                  structureType: missing.structureType,
+                  pos: missing.pos,
+                  priority: this.getStructurePriority(missing.structureType),
+                  rclRequired: this.getMinRCLForStructure(missing.structureType),
+                  placed: false,
+                  reason: "Structure decayed and needs rebuilding"
+                });
+                Logger.info(`Added missing ${missing.structureType} at ${missing.pos.x},${missing.pos.y} to rebuild plan`, "StructureReplacement");
+              }
+            }
+            plan.lastUpdated = Game.time;
+          }
+          this.checkAndReplaceMissingRoads(room, plan);
+        } catch (error) {
+          Logger.error(`Error checking for decayed structures in room ${room.name}: ${error}`, "StructureReplacement");
+        }
+      }
+      static findMissingStructures(room, plan) {
+        const missingStructures = [];
+        const rcl = room.controller ? room.controller.level : 0;
+        const existingStructures = room.find(FIND_STRUCTURES);
+        const existingStructureMap = /* @__PURE__ */ new Map();
+        for (const structure of existingStructures) {
+          const key = `${structure.pos.x},${structure.pos.y},${structure.structureType}`;
+          existingStructureMap.set(key, structure);
+        }
+        for (const building of plan.buildings) {
+          if (building.rclRequired <= rcl && building.placed) {
+            const key = `${building.pos.x},${building.pos.y},${building.structureType}`;
+            if (!existingStructureMap.has(key)) {
+              missingStructures.push({
+                structureType: building.structureType,
+                pos: new RoomPosition(building.pos.x, building.pos.y, room.name)
+              });
+            }
+          }
+        }
+        return missingStructures;
+      }
+      static checkAndReplaceMissingRoads(room, plan) {
+        if (!plan.roads) {
+          return;
+        }
+        const existingRoads = room.find(FIND_STRUCTURES, {
+          filter: (structure) => structure.structureType === STRUCTURE_ROAD
+        });
+        const existingRoadMap = /* @__PURE__ */ new Map();
+        for (const road of existingRoads) {
+          const key = `${road.pos.x},${road.pos.y}`;
+          existingRoadMap.set(key, road);
+        }
+        let missingRoadCount = 0;
+        for (const road of plan.roads) {
+          if (road.placed) {
+            const key = `${road.pos.x},${road.pos.y}`;
+            if (!existingRoadMap.has(key)) {
+              road.placed = false;
+              missingRoadCount++;
+            }
+          }
+        }
+        if (missingRoadCount > 0) {
+          Logger.warn(`Found ${missingRoadCount} missing roads in room ${room.name} - marked for rebuilding`, "StructureReplacement");
+          plan.lastUpdated = Game.time;
+        }
+      }
+      static getStructurePriority(structureType) {
+        switch (structureType) {
+          case STRUCTURE_SPAWN:
+            return 100;
+          case STRUCTURE_EXTENSION:
+            return 80;
+          case STRUCTURE_TOWER:
+            return 85;
+          case STRUCTURE_STORAGE:
+            return 70;
+          case STRUCTURE_CONTAINER:
+            return 60;
+          case STRUCTURE_LINK:
+            return 65;
+          case STRUCTURE_EXTRACTOR:
+            return 50;
+          case STRUCTURE_LAB:
+            return 55;
+          case STRUCTURE_TERMINAL:
+            return 75;
+          case STRUCTURE_FACTORY:
+            return 45;
+          case STRUCTURE_NUKER:
+            return 40;
+          case STRUCTURE_OBSERVER:
+            return 35;
+          case STRUCTURE_POWER_SPAWN:
+            return 30;
+          default:
+            return 25;
+        }
+      }
+      static getMinRCLForStructure(structureType) {
+        switch (structureType) {
+          case STRUCTURE_SPAWN:
+            return 1;
+          case STRUCTURE_EXTENSION:
+            return 2;
+          case STRUCTURE_RAMPART:
+            return 2;
+          case STRUCTURE_WALL:
+            return 2;
+          case STRUCTURE_ROAD:
+            return 3;
+          case STRUCTURE_TOWER:
+            return 3;
+          case STRUCTURE_CONTAINER:
+            return 3;
+          case STRUCTURE_STORAGE:
+            return 4;
+          case STRUCTURE_LINK:
+            return 5;
+          case STRUCTURE_EXTRACTOR:
+            return 6;
+          case STRUCTURE_LAB:
+            return 6;
+          case STRUCTURE_TERMINAL:
+            return 6;
+          case STRUCTURE_FACTORY:
+            return 7;
+          case STRUCTURE_NUKER:
+            return 8;
+          case STRUCTURE_OBSERVER:
+            return 8;
+          case STRUCTURE_POWER_SPAWN:
+            return 8;
+          default:
+            return 1;
         }
       }
     };
@@ -3813,18 +4017,39 @@ var init_Builder = __esm({
       }
       static buildOrRepair(creep) {
         let target = null;
-        target = this.findHighestPriorityConstructionSite(creep);
+        target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+          filter: (structure) => {
+            return structure.hits < structure.hitsMax * 0.1 && structure.structureType !== STRUCTURE_WALL;
+          }
+        });
+        if (!target) {
+          target = this.findHighestPriorityConstructionSite(creep);
+        }
         if (!target) {
           target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
             filter: (structure) => {
-              return structure.hits < structure.hitsMax * 0.8 && structure.structureType !== STRUCTURE_WALL && structure.structureType !== STRUCTURE_RAMPART;
+              return structure.structureType === STRUCTURE_RAMPART && structure.hits < structure.hitsMax * 0.8;
             }
           });
         }
         if (!target) {
           target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
             filter: (structure) => {
-              return (structure.structureType === STRUCTURE_ROAD || structure.structureType === STRUCTURE_CONTAINER) && structure.hits < structure.hitsMax * 0.5;
+              return structure.hits < structure.hitsMax * 0.8 && structure.structureType !== STRUCTURE_WALL && structure.structureType !== STRUCTURE_RAMPART && (structure.structureType === STRUCTURE_SPAWN || structure.structureType === STRUCTURE_EXTENSION || structure.structureType === STRUCTURE_TOWER || structure.structureType === STRUCTURE_STORAGE);
+            }
+          });
+        }
+        if (!target) {
+          target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+            filter: (structure) => {
+              return (structure.structureType === STRUCTURE_ROAD || structure.structureType === STRUCTURE_CONTAINER) && structure.hits < structure.hitsMax * 0.6;
+            }
+          });
+        }
+        if (!target) {
+          target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+            filter: (structure) => {
+              return structure.hits < structure.hitsMax * 0.8 && structure.structureType !== STRUCTURE_WALL && structure.structureType !== STRUCTURE_RAMPART;
             }
           });
         }
@@ -4027,6 +4252,7 @@ var Kernel = class {
       const { RoomManager: RoomManager2 } = (init_RoomManager(), __toCommonJS(RoomManager_exports));
       const { SpawnManager: SpawnManager2 } = (init_SpawnManager(), __toCommonJS(SpawnManager_exports));
       const { StorageManager: StorageManager2 } = (init_StorageManager(), __toCommonJS(StorageManager_exports));
+      const { StructureReplacementManager: StructureReplacementManager2 } = (init_StructureReplacementManager(), __toCommonJS(StructureReplacementManager_exports));
       this.roomManager = new RoomManager2();
       this.spawnManager = new SpawnManager2();
       this.registerManager("RoomManager", () => this.roomManager.run());
@@ -4036,6 +4262,14 @@ var Kernel = class {
           const room = Game.rooms[roomName];
           if (room && room.controller && room.controller.my) {
             StorageManager2.run(room);
+          }
+        }
+      });
+      this.registerManager("StructureReplacementManager", () => {
+        for (const roomName in Game.rooms) {
+          const room = Game.rooms[roomName];
+          if (room && room.controller && room.controller.my) {
+            StructureReplacementManager2.checkAndReplaceDecayedStructures(room);
           }
         }
       });

@@ -65,24 +65,30 @@ export class SpawnManager {
         requiredCreeps['upgrader'] = rcl >= 3 ? 2 : 1;
       }
       
-      // Builders: Dynamic based on construction phase and RCL
-      if (constructionSites.length > 0) {
-        if (rcl >= 3) {
-          // RCL3+: More builders due to increased complexity (towers, more extensions, containers)
-          if (constructionSites.length > 10) {
-            requiredCreeps['builder'] = 3; // Heavy construction phase
-          } else if (constructionSites.length > 5) {
-            requiredCreeps['builder'] = 2; // Moderate construction
-          } else {
-            requiredCreeps['builder'] = 1; // Light construction
-          }
+      // Builders: Dynamic based on construction phase, repair workload, and RCL
+      const repairWorkload = this.calculateRepairWorkload(room);
+      const totalWorkload = constructionSites.length + repairWorkload;
+      
+      if (rcl >= 3) {
+        // RCL3+: Scale builders based on total workload (construction + repairs)
+        if (totalWorkload > 15) {
+          requiredCreeps['builder'] = 4; // Heavy workload (construction + many repairs)
+        } else if (totalWorkload > 10) {
+          requiredCreeps['builder'] = 3; // Heavy construction or moderate repairs
+        } else if (totalWorkload > 5) {
+          requiredCreeps['builder'] = 2; // Moderate workload
         } else {
-          // RCL2: Original logic
-          requiredCreeps['builder'] = constructionSites.length > 3 ? 2 : 1;
+          requiredCreeps['builder'] = 1; // Light workload or maintenance
         }
       } else {
-        // No construction: Minimal builders for maintenance
-        requiredCreeps['builder'] = rcl >= 3 ? 1 : 0;
+        // RCL2: Include repair workload in builder calculation
+        if (totalWorkload > 8) {
+          requiredCreeps['builder'] = 3; // Heavy workload
+        } else if (totalWorkload > 3) {
+          requiredCreeps['builder'] = 2; // Moderate workload
+        } else {
+          requiredCreeps['builder'] = totalWorkload > 0 ? 1 : 0; // Light workload or none
+        }
       }
       
       // Haulers: Critical for RCL 3+ when harvesters become stationary
@@ -326,6 +332,47 @@ export class SpawnManager {
         default: return cost;
       }
     }, 0);
+  }
+
+  private calculateRepairWorkload(room: Room): number {
+    // Calculate repair workload based on damaged structures
+    const structures = room.find(FIND_STRUCTURES);
+    let repairWorkload = 0;
+
+    for (const structure of structures) {
+      const healthPercent = structure.hits / structure.hitsMax;
+      
+      // Emergency repairs (structures < 10% health) - highest priority
+      if (healthPercent < 0.1 && structure.structureType !== STRUCTURE_WALL) {
+        repairWorkload += 5; // Emergency repairs count as 5 units of work
+      }
+      // Ramparts needing repair (< 80% health) - high priority
+      else if (structure.structureType === STRUCTURE_RAMPART && healthPercent < 0.8) {
+        repairWorkload += 3; // Rampart repairs count as 3 units of work
+      }
+      // Critical structures needing repair (< 80% health)
+      else if (healthPercent < 0.8 && 
+               (structure.structureType === STRUCTURE_SPAWN ||
+                structure.structureType === STRUCTURE_EXTENSION ||
+                structure.structureType === STRUCTURE_TOWER ||
+                structure.structureType === STRUCTURE_STORAGE)) {
+        repairWorkload += 2; // Critical structure repairs count as 2 units of work
+      }
+      // Roads and containers needing repair (< 60% health)
+      else if (healthPercent < 0.6 && 
+               (structure.structureType === STRUCTURE_ROAD ||
+                structure.structureType === STRUCTURE_CONTAINER)) {
+        repairWorkload += 1; // Infrastructure repairs count as 1 unit of work
+      }
+      // Other structures needing repair (< 80% health)
+      else if (healthPercent < 0.8 && 
+               structure.structureType !== STRUCTURE_WALL &&
+               structure.structureType !== STRUCTURE_RAMPART) {
+        repairWorkload += 1; // General repairs count as 1 unit of work
+      }
+    }
+
+    return repairWorkload;
   }
 
   private spawnCreep(spawn: StructureSpawn, role: string, body: BodyPartConstant[], homeRoom: string): void {

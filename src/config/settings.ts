@@ -51,7 +51,9 @@ export const Settings = {
     memoryUpdateInterval: 10,  // Ticks between room memory updates
     defenseRange: 5,           // Range to look for hostiles
     repairThreshold: 0.8,      // Repair structures below this health ratio
-    roadRepairThreshold: 0.5,  // Repair roads below this health ratio
+    roadRepairThreshold: 0.6,  // Repair roads below this health ratio (improved from 0.5)
+    emergencyRepairThreshold: 0.1,  // Emergency repair threshold for critical structures
+    rampartRepairThreshold: 0.8,    // Repair ramparts below this health ratio
   },
 
   // CPU and performance settings

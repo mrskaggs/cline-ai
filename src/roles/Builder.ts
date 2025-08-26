@@ -79,13 +79,67 @@ export class Builder {
   }
 
   private static buildOrRepair(creep: Creep): void {
-    // Priority: construction sites (by priority), then repair damaged structures
+    // Enhanced priority system: emergency repairs, construction, regular repairs
     let target: ConstructionSite | Structure | null = null;
 
-    // First priority: construction sites (sorted by priority)
-    target = this.findHighestPriorityConstructionSite(creep);
+    // EMERGENCY PRIORITY: Critically damaged structures (below 10% health)
+    target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+      filter: (structure) => {
+        return (
+          structure.hits < structure.hitsMax * 0.1 &&
+          structure.structureType !== STRUCTURE_WALL
+        );
+      },
+    });
 
-    // Second priority: damaged structures (below 80% health)
+    // First priority: construction sites (sorted by priority) - only if no emergency repairs
+    if (!target) {
+      target = this.findHighestPriorityConstructionSite(creep);
+    }
+
+    // Second priority: damaged ramparts (below 80% health) - CRITICAL for defense
+    if (!target) {
+      target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+        filter: (structure) => {
+          return (
+            structure.structureType === STRUCTURE_RAMPART &&
+            structure.hits < structure.hitsMax * 0.8
+          );
+        },
+      });
+    }
+
+    // Third priority: damaged critical structures (below 80% health)
+    if (!target) {
+      target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+        filter: (structure) => {
+          return (
+            structure.hits < structure.hitsMax * 0.8 &&
+            structure.structureType !== STRUCTURE_WALL &&
+            structure.structureType !== STRUCTURE_RAMPART &&
+            (structure.structureType === STRUCTURE_SPAWN ||
+             structure.structureType === STRUCTURE_EXTENSION ||
+             structure.structureType === STRUCTURE_TOWER ||
+             structure.structureType === STRUCTURE_STORAGE)
+          );
+        },
+      });
+    }
+
+    // Fourth priority: roads and containers that need repair (below 60% health - improved threshold)
+    if (!target) {
+      target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
+        filter: (structure) => {
+          return (
+            (structure.structureType === STRUCTURE_ROAD ||
+              structure.structureType === STRUCTURE_CONTAINER) &&
+            structure.hits < structure.hitsMax * 0.6
+          );
+        },
+      });
+    }
+
+    // Fifth priority: other damaged structures (below 80% health)
     if (!target) {
       target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
         filter: (structure) => {
@@ -93,19 +147,6 @@ export class Builder {
             structure.hits < structure.hitsMax * 0.8 &&
             structure.structureType !== STRUCTURE_WALL &&
             structure.structureType !== STRUCTURE_RAMPART
-          );
-        },
-      });
-    }
-
-    // Third priority: roads and containers that need repair (below 50% health)
-    if (!target) {
-      target = creep.pos.findClosestByPath(FIND_STRUCTURES, {
-        filter: (structure) => {
-          return (
-            (structure.structureType === STRUCTURE_ROAD ||
-              structure.structureType === STRUCTURE_CONTAINER) &&
-            structure.hits < structure.hitsMax * 0.5
           );
         },
       });

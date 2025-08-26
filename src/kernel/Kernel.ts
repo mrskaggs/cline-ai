@@ -51,6 +51,7 @@ export class Kernel implements IKernel {
       const { RoomManager } = require('../managers/RoomManager');
       const { SpawnManager } = require('../managers/SpawnManager');
       const { StorageManager } = require('../managers/StorageManager');
+      const { StructureReplacementManager } = require('../managers/StructureReplacementManager');
       
       this.roomManager = new RoomManager();
       this.spawnManager = new SpawnManager();
@@ -62,6 +63,14 @@ export class Kernel implements IKernel {
           const room = Game.rooms[roomName];
           if (room && room.controller && room.controller.my) {
             StorageManager.run(room);
+          }
+        }
+      });
+      this.registerManager('StructureReplacementManager', () => {
+        for (const roomName in Game.rooms) {
+          const room = Game.rooms[roomName];
+          if (room && room.controller && room.controller.my) {
+            StructureReplacementManager.checkAndReplaceDecayedStructures(room);
           }
         }
       });

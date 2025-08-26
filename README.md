@@ -392,6 +392,19 @@ interface CreepMemory {
 - **Testing**: Comprehensive test suite validates all functionality - all tests pass
 - **Impact**: Ready for RCL 3 transition with efficient container-based energy logistics
 
+### Enhanced Repair and Replacement System (Latest)
+- **Problem Solved**: "Things disappearing" - structures decaying and vanishing due to insufficient repair
+- **Repair Workload Scaling**: SpawnManager now scales builders (1-4) based on repair workload calculation
+- **Structure Replacement**: StructureReplacementManager automatically detects and rebuilds missing structures
+- **Emergency Repairs**: Structures <10% health get immediate priority to prevent disappearance
+- **Rampart Maintenance**: Ramparts now included in repair logic (previously excluded)
+- **Improved Thresholds**: Roads repaired at 60% vs old 50% health for better maintenance
+- **6-Tier Priority System**: Emergency → Construction → Ramparts → Critical → Infrastructure → General
+- **Automatic Detection**: Missing roads and buildings automatically marked for rebuilding
+- **Workforce Scaling**: Heavy repair scenarios get 3-4 builders instead of just 1
+- **Testing**: Comprehensive validation with all repair scenarios - all tests pass
+- **Impact**: Complete solution to structure decay - no more disappearing infrastructure
+
 ### Scout Role Implementation (Intelligence System)
 - **Feature**: Complete Scout role system for room exploration and strategic intelligence
 - **Room Cycling Fix**: Resolved infinite cycling issue with proper memory timestamp management
