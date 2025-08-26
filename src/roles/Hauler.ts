@@ -94,17 +94,28 @@ export class Hauler {
       }
     }
 
-    // Fallback: Look for any available energy sources
+    // Fallback: Look for source containers only (exclude controller containers)
     // Priority 1: Containers near sources (primary energy collection)
-    const containers = creep.room.find(FIND_STRUCTURES, {
+    const sourceContainers = creep.room.find(FIND_STRUCTURES, {
       filter: (structure) => {
-        return structure.structureType === STRUCTURE_CONTAINER &&
-               structure.store[RESOURCE_ENERGY] > 0;
+        if (structure.structureType !== STRUCTURE_CONTAINER || structure.store[RESOURCE_ENERGY] === 0) {
+          return false;
+        }
+        
+        // Exclude controller containers - haulers should only deliver to them, not take from them
+        if (creep.room.controller) {
+          const distanceToController = structure.pos.getRangeTo(creep.room.controller);
+          if (distanceToController <= 3) {
+            return false; // This is a controller container, skip it
+          }
+        }
+        
+        return true;
       }
     }) as StructureContainer[];
 
-    if (containers.length > 0) {
-      const targetContainer = creep.pos.findClosestByPath(containers);
+    if (sourceContainers.length > 0) {
+      const targetContainer = creep.pos.findClosestByPath(sourceContainers);
       if (targetContainer) {
         if (creep.withdraw(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
           creep.moveTo(targetContainer, { visualizePathStyle: { stroke: '#ffaa00' } });

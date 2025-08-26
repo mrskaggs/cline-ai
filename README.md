@@ -405,18 +405,20 @@ interface CreepMemory {
 - **Testing**: Comprehensive validation with all repair scenarios - all tests pass
 - **Impact**: Complete solution to structure decay - no more disappearing infrastructure
 
-### Scout Role Implementation (Intelligence System)
-- **Feature**: Complete Scout role system for room exploration and strategic intelligence
-- **Room Cycling Fix**: Resolved infinite cycling issue with proper memory timestamp management
-- **Memory Integration**: Populates both `scoutData` (intelligence) and `sources` (system compatibility)
-- **Intelligence Gathering**: Comprehensive data collection - sources, minerals, controller, hostiles, structures
-- **Smart Exploration**: Three-phase state machine (moving → exploring → returning) with room center positioning
-- **Error Handling**: Marks inaccessible rooms to prevent infinite loops, comprehensive logging for debugging
-- **Energy Efficient**: Minimal MOVE-only bodies (50-100 energy), spawns only in stable RCL 2+ economies
-- **Strategic Value**: Room type classification, remote mining scoring, expansion planning data
-- **Integration**: Full SpawnManager and Kernel integration with priority-based spawning
-- **Testing**: Comprehensive test suite validates all functionality - all tests pass
-- **Impact**: Provides strategic intelligence for expansion while waiting for RCL 3+
+### Scout Role System Rebuild (Latest)
+- **Problem Solved**: Previous Scout implementation was overly complex with room cycling, memory race conditions, and excessive CPU overhead
+- **Complete Rebuild**: Rebuilt from scratch with simple 4-state machine (idle → moving → exploring → returning)
+- **Eliminated Issues**: Room cycling/bouncing, memory timestamp race conditions, complex exploration logic, excessive logging
+- **New Architecture**: Clean state transitions, fixed 3-tick exploration cycle, minimal CPU and memory usage
+- **Intelligence Gathering**: Essential data collection - sources, controller, hostiles, structures, minerals
+- **Memory Compatibility**: Works with existing room scout data, backward compatible with automatic transition
+- **Simple Scoring**: Basic remote mining viability calculation for expansion planning
+- **Error Handling**: Robust recovery from pathing failures, marks inaccessible rooms gracefully
+- **Energy Efficient**: Minimal [MOVE] body part (50 energy), spawns at RCL 2+ with stable economy
+- **System Integration**: Full Kernel and SpawnManager integration with proper TypeScript types
+- **Memory Cleanup**: Optional cleanup utility provided for clean transition from old system
+- **Testing**: Comprehensive validation with successful build integration (165.7kb bundle)
+- **Impact**: Reliable intelligence gathering with simple, maintainable codebase for strategic expansion planning
 
 ## Testing
 

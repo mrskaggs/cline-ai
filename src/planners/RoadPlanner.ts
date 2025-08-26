@@ -194,13 +194,42 @@ export class RoadPlanner {
     
     // Sort roads by priority and place highest priority first
     // Allow high-priority roads (like source/controller paths) even without traffic data
+    // Also prioritize roads that were previously placed but have decayed (marked for rebuilding)
     const eligibleRoads = roads
       .filter(road => 
         !road.placed && 
-        (road.trafficScore >= Settings.planning.minTrafficForRoad || road.priority >= 80) &&
+        (road.trafficScore >= Settings.planning.minTrafficForRoad || 
+         road.priority >= 80 || 
+         this.wasRoadPreviouslyPlaced(road)) &&
         !this.hasRoadOrStructure(road.pos)
       )
-      .sort((a, b) => b.priority - a.priority);
+      .sort((a, b) => {
+        // Prioritize previously placed roads (rebuilding) over new roads
+        const aWasPreviouslyPlaced = this.wasRoadPreviouslyPlaced(a);
+        const bWasPreviouslyPlaced = this.wasRoadPreviouslyPlaced(b);
+        
+        if (aWasPreviouslyPlaced && !bWasPreviouslyPlaced) return -1;
+        if (!aWasPreviouslyPlaced && bWasPreviouslyPlaced) return 1;
+        
+        // If both are same type (both rebuilding or both new), sort by priority first
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority;
+        }
+        
+        // For roads with same priority, build from inside out (closest to spawn first)
+        const spawns = room.find(FIND_MY_SPAWNS);
+        if (spawns.length > 0) {
+          const spawn = spawns[0]; // Use first spawn as reference point
+          if (spawn) {
+            const aDistanceToSpawn = spawn.pos.getRangeTo(a.pos.x, a.pos.y);
+            const bDistanceToSpawn = spawn.pos.getRangeTo(b.pos.x, b.pos.y);
+            return aDistanceToSpawn - bDistanceToSpawn; // Closer to spawn = lower distance = higher priority
+          }
+        }
+        
+        // Fallback to priority if no spawn found
+        return b.priority - a.priority;
+      });
     
     for (const road of eligibleRoads) {
       if (sitesPlaced >= sitesToPlace) break;
@@ -418,6 +447,39 @@ export class RoadPlanner {
       highTrafficRoads: highTrafficRoads,
       recommendedUpgrades: recommendedUpgrades
     };
+  }
+
+  /**
+   * Check if a road was previously placed but has now decayed (marked for rebuilding)
+   * This helps prioritize rebuilding roads that were built before over new road planning
+   */
+  private static wasRoadPreviouslyPlaced(road: PlannedRoad): boolean {
+    // If a road is not placed but has a construction site ID, it was likely previously built
+    if (!road.placed && road.constructionSiteId) {
+      return true;
+    }
+    
+    // For roads that are marked as not placed but have high priority (source/controller paths),
+    // they were likely previously built and should be prioritized for rebuilding
+    // This catches roads that were marked as placed=false by StructureReplacementManager
+    if (!road.placed && road.priority >= 90) {
+      return true;
+    }
+    
+    // Also prioritize medium-priority roads that might have been built before
+    // This helps with roads that were built but don't have high traffic anymore
+    // Lowered threshold to include more road types (exit=60, mineral=70)
+    if (!road.placed && road.priority >= 60 && road.pathType !== 'internal') {
+      return true;
+    }
+    
+    // For any road that's not placed and has some priority, if it's not internal,
+    // it was likely part of a planned path system and should be rebuilt
+    if (!road.placed && road.priority >= 50 && (road.pathType === 'source' || road.pathType === 'controller' || road.pathType === 'mineral' || road.pathType === 'exit')) {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
