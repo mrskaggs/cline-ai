@@ -756,40 +756,51 @@ var init_LayoutTemplates = __esm({
         };
       }
       /**
-       * RCL 2 Template - Add extensions around spawn
+       * RCL 2 Template - Add extensions around spawn (L-shaped pattern for spawn accessibility)
        */
       static getRCL2Template() {
         return {
-          name: "RCL2_Extensions",
+          name: "RCL2_Extensions_SpawnSafe",
           rcl: 2,
           centerOffset: { x: 0, y: 0 },
           buildings: [
-            // 5 extensions in a cross pattern around spawn
-            { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 0 }, priority: 2 },
-            { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: 0 }, priority: 2 },
-            { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: -1 }, priority: 2 },
-            { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: 1 }, priority: 2 },
-            { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: -1 }, priority: 3 }
+            // 5 extensions in L-shaped pattern - maintains spawn accessibility
+            // Only blocks 2 of 8 spawn positions, leaves 6 free for excellent spawn efficiency
+            { structureType: STRUCTURE_EXTENSION, offset: { x: -2, y: 0 }, priority: 2 },
+            // West 2 tiles
+            { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: -1 }, priority: 2 },
+            // Northwest (blocks spawn)
+            { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: -2 }, priority: 2 },
+            // North 2 tiles
+            { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: -1 }, priority: 3 },
+            // Northeast (blocks spawn)
+            { structureType: STRUCTURE_EXTENSION, offset: { x: 2, y: 0 }, priority: 3 }
+            // East 2 tiles
           ]
         };
       }
       /**
-       * RCL 3 Template - Add tower and more extensions (containers now handled by dynamic placement)
+       * RCL 3 Template - Add tower and more extensions (spawn-safe placement)
        */
       static getRCL3Template() {
         return {
-          name: "RCL3_Tower_Extensions",
+          name: "RCL3_Tower_Extensions_SpawnSafe",
           rcl: 3,
           centerOffset: { x: 0, y: 0 },
           buildings: [
-            // Tower for defense
-            { structureType: STRUCTURE_TOWER, offset: { x: 2, y: 0 }, priority: 1 },
-            // Additional extensions (5 more for total of 10)
-            { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: -1 }, priority: 2 },
+            // Tower for defense - positioned away from spawn
+            { structureType: STRUCTURE_TOWER, offset: { x: 0, y: 2 }, priority: 1 },
+            // Additional extensions (5 more for total of 10) - avoid spawn positions
             { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 1 }, priority: 2 },
+            // Southwest (blocks spawn)
             { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: 1 }, priority: 2 },
-            { structureType: STRUCTURE_EXTENSION, offset: { x: -2, y: 0 }, priority: 3 },
-            { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: -2 }, priority: 3 }
+            // Southeast (blocks spawn)
+            { structureType: STRUCTURE_EXTENSION, offset: { x: -2, y: -1 }, priority: 3 },
+            // West-northwest
+            { structureType: STRUCTURE_EXTENSION, offset: { x: 2, y: -1 }, priority: 3 },
+            // East-northeast
+            { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: 3 }, priority: 3 }
+            // South 3 tiles
           ]
         };
       }
@@ -989,7 +1000,7 @@ var init_LayoutTemplates = __esm({
         else if (rcl >= 5) limits[STRUCTURE_TOWER] = 2;
         else if (rcl >= 3) limits[STRUCTURE_TOWER] = 1;
         else limits[STRUCTURE_TOWER] = 0;
-        limits[STRUCTURE_CONTAINER] = rcl >= 3 ? 5 : 0;
+        limits[STRUCTURE_CONTAINER] = 5;
         limits[STRUCTURE_STORAGE] = rcl >= 4 ? 1 : 0;
         limits[STRUCTURE_LINK] = rcl >= 5 ? Math.min(Math.floor((rcl - 4) * 2), 6) : 0;
         limits[STRUCTURE_TERMINAL] = rcl >= 6 ? 1 : 0;
@@ -2672,12 +2683,24 @@ var init_StorageManager = __esm({
       }
       /**
        * Gets optimal energy sources for haulers based on current strategy
+       * FIXED: Excludes controller containers - haulers should only deliver to them, not collect from them
        */
       static getOptimalEnergySources(room) {
         const strategy = this.getEnergyStrategy(room);
         const sources = [];
         const containers = room.find(FIND_STRUCTURES, {
-          filter: (structure) => structure.structureType === STRUCTURE_CONTAINER && structure.store.energy > 0
+          filter: (structure) => {
+            if (structure.structureType !== STRUCTURE_CONTAINER || structure.store.energy === 0) {
+              return false;
+            }
+            if (room.controller) {
+              const distanceToController = structure.pos.getRangeTo(room.controller);
+              if (distanceToController <= 3) {
+                return false;
+              }
+            }
+            return true;
+          }
         });
         sources.push(...containers);
         if (room.storage && strategy !== "collect" && room.storage.store.energy > 0) {
@@ -2743,9 +2766,19 @@ var init_Hauler = __esm({
       }
       /**
        * Collect energy from containers, storage, or dropped resources
+       * PRIORITY 1: Dropped energy (prevents decay)
        * Uses StorageManager for optimal source selection based on room strategy
        */
       static collectEnergy(creep) {
+        const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
+          filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
+        });
+        if (droppedEnergy) {
+          if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
+            creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: "#00ff00" } });
+          }
+          return;
+        }
         if (creep.room.controller && creep.room.controller.level >= 4) {
           try {
             const optimalSources = StorageManager.getOptimalEnergySources(creep.room);
@@ -2812,19 +2845,11 @@ var init_Hauler = __esm({
             return;
           }
         }
-        const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
-          filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
-        });
-        if (droppedEnergy) {
-          if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
-            creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: "#ffaa00" } });
-          }
-          return;
-        }
         creep.moveTo(25, 25);
       }
       /**
-       * Deliver energy to spawn, extensions, towers, or storage
+       * Deliver energy to spawn, extensions, towers, controller containers, then storage
+       * FIXED: Controller containers now prioritized BEFORE storage to ensure upgraders get energy
        */
       static deliverEnergy(creep) {
         const spawn = creep.pos.findClosestByPath(FIND_MY_SPAWNS, {
@@ -2850,6 +2875,22 @@ var init_Hauler = __esm({
             return;
           }
         }
+        if (creep.room.controller) {
+          const controllerContainers = creep.room.controller.pos.findInRange(FIND_STRUCTURES, 3, {
+            filter: (structure) => {
+              return structure.structureType === STRUCTURE_CONTAINER && structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+            }
+          });
+          if (controllerContainers.length > 0) {
+            const targetContainer = controllerContainers[0];
+            if (targetContainer) {
+              if (creep.transfer(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+                creep.moveTo(targetContainer, { visualizePathStyle: { stroke: "#ffffff" } });
+              }
+              return;
+            }
+          }
+        }
         const towers = creep.room.find(FIND_MY_STRUCTURES, {
           filter: (structure) => {
             return structure.structureType === STRUCTURE_TOWER && structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
@@ -2871,49 +2912,30 @@ var init_Hauler = __esm({
           }
           return;
         }
-        if (creep.room.controller) {
-          const controllerContainers = creep.room.controller.pos.findInRange(FIND_STRUCTURES, 3, {
-            filter: (structure) => {
-              return structure.structureType === STRUCTURE_CONTAINER && structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
-            }
-          });
-          if (controllerContainers.length > 0) {
-            const targetContainer = controllerContainers[0];
-            if (targetContainer) {
-              if (creep.transfer(targetContainer, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-                creep.moveTo(targetContainer, { visualizePathStyle: { stroke: "#ffffff" } });
-              }
-              return;
-            }
-          }
-        }
         creep.moveTo(25, 25);
       }
       /**
        * Get optimal body configuration for hauler based on available energy
+       * Optimized for perfect energy utilization at each RCL
        */
       static getBody(energyAvailable) {
-        const bodies = [
-          { energy: 200, body: [CARRY, CARRY, MOVE] },
-          // 2 carry, 1 move (100 capacity)
-          { energy: 300, body: [CARRY, CARRY, CARRY, MOVE, MOVE] },
-          // 3 carry, 2 move (150 capacity)
-          { energy: 400, body: [CARRY, CARRY, CARRY, CARRY, MOVE, MOVE] },
-          // 4 carry, 2 move (200 capacity)
-          { energy: 500, body: [CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] },
-          // 5 carry, 3 move (250 capacity)
-          { energy: 600, body: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] },
-          // 6 carry, 3 move (300 capacity)
-          { energy: 800, body: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE] }
-          // 8 carry, 4 move (400 capacity)
-        ];
-        for (let i = bodies.length - 1; i >= 0; i--) {
-          const bodyConfig = bodies[i];
-          if (bodyConfig && energyAvailable >= bodyConfig.energy) {
-            return bodyConfig.body;
-          }
+        if (energyAvailable >= 1300) {
+          return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE];
+        } else if (energyAvailable >= 800) {
+          return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE];
+        } else if (energyAvailable >= 550) {
+          return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+        } else if (energyAvailable >= 500) {
+          return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+        } else if (energyAvailable >= 400) {
+          return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+        } else if (energyAvailable >= 300) {
+          return [CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+        } else if (energyAvailable >= 200) {
+          return [CARRY, CARRY, MOVE];
+        } else {
+          return [CARRY, CARRY, MOVE];
         }
-        return [CARRY, CARRY, MOVE];
       }
       /**
        * Calculate energy cost for a body configuration
@@ -3314,9 +3336,9 @@ var init_SpawnManager = __esm({
           case "hauler":
             return Hauler.getBody(energyAvailable);
           case "upgrader":
-            return this.getUpgraderBody(energyAvailable);
+            return this.getUpgraderBody(energyAvailable, room);
           case "builder":
-            return this.getBuilderBody(energyAvailable);
+            return this.getBuilderBody(energyAvailable, room);
           case "scout":
             return Scout.getBodyParts(energyAvailable);
           default:
@@ -3326,56 +3348,80 @@ var init_SpawnManager = __esm({
       }
       getHarvesterBody(energyAvailable, room) {
         const rcl = room.controller ? room.controller.level : 1;
+        const energyCapacity = room.energyCapacityAvailable;
+        const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
         const hasContainers = rcl >= 3 && room.find(FIND_STRUCTURES, {
           filter: (structure) => structure.structureType === STRUCTURE_CONTAINER
         }).length > 0;
         if (hasContainers) {
-          if (energyAvailable >= 600) {
+          if (targetEnergy >= 1300) {
+            return [WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+          } else if (targetEnergy >= 800) {
+            return [WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+          } else if (targetEnergy >= 600) {
             return [WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
-          } else if (energyAvailable >= 500) {
+          } else if (targetEnergy >= 500) {
             return [WORK, WORK, WORK, WORK, CARRY, MOVE];
-          } else if (energyAvailable >= 350) {
+          } else if (targetEnergy >= 350) {
             return [WORK, WORK, WORK, CARRY];
-          } else if (energyAvailable >= 300) {
+          } else if (targetEnergy >= 300) {
             return [WORK, WORK, WORK, CARRY, MOVE];
           } else {
             return [WORK, CARRY, MOVE];
           }
         } else {
-          if (energyAvailable >= 400) {
+          if (targetEnergy >= 550) {
+            return [WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+          } else if (targetEnergy >= 400) {
             return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
-          } else if (energyAvailable >= 300) {
-            return [WORK, WORK, WORK, CARRY, MOVE];
-          } else if (energyAvailable >= 200) {
+          } else if (targetEnergy >= 300) {
+            return [WORK, WORK, CARRY, MOVE];
+          } else if (targetEnergy >= 200) {
             return [WORK, CARRY, MOVE];
           } else {
             return [WORK, CARRY, MOVE];
           }
         }
       }
-      getUpgraderBody(energyAvailable) {
-        if (energyAvailable >= 500) {
+      getUpgraderBody(energyAvailable, room) {
+        const energyCapacity = room.energyCapacityAvailable;
+        const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
+        if (targetEnergy >= 1300) {
+          return [WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, CARRY, MOVE];
+        } else if (targetEnergy >= 800) {
+          return [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE];
+        } else if (targetEnergy >= 550) {
+          return [WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE];
+        } else if (targetEnergy >= 500) {
           return [WORK, WORK, WORK, CARRY, CARRY, MOVE];
-        } else if (energyAvailable >= 400) {
+        } else if (targetEnergy >= 400) {
           return [WORK, WORK, CARRY, CARRY, MOVE];
-        } else if (energyAvailable >= 300) {
-          return [WORK, WORK, WORK, CARRY, MOVE];
-        } else if (energyAvailable >= 200) {
+        } else if (targetEnergy >= 300) {
+          return [WORK, WORK, CARRY, MOVE];
+        } else if (targetEnergy >= 200) {
           return [WORK, CARRY, MOVE];
         } else {
           return [WORK, CARRY, MOVE];
         }
       }
-      getBuilderBody(energyAvailable) {
-        if (energyAvailable >= 450) {
+      getBuilderBody(energyAvailable, room) {
+        const energyCapacity = room.energyCapacityAvailable;
+        const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
+        if (targetEnergy >= 1300) {
+          return [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+        } else if (targetEnergy >= 800) {
+          return [WORK, WORK, WORK, WORK, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+        } else if (targetEnergy >= 550) {
+          return [WORK, WORK, WORK, CARRY, CARRY, CARRY, MOVE, MOVE];
+        } else if (targetEnergy >= 450) {
           return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
-        } else if (energyAvailable >= 350) {
+        } else if (targetEnergy >= 350) {
           return [WORK, CARRY, CARRY, MOVE, MOVE];
-        } else if (energyAvailable >= 300) {
+        } else if (targetEnergy >= 300) {
           return [WORK, WORK, CARRY, CARRY, MOVE];
-        } else if (energyAvailable >= 250) {
+        } else if (targetEnergy >= 250) {
           return [WORK, CARRY, MOVE, MOVE];
-        } else if (energyAvailable >= 200) {
+        } else if (targetEnergy >= 200) {
           return [WORK, CARRY, MOVE];
         } else {
           return [WORK, CARRY, MOVE];
@@ -3401,16 +3447,16 @@ var init_SpawnManager = __esm({
         return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
       }
       getOptimalCreepBody(role, energyCapacity, room) {
-        const maxEnergy = Math.min(energyCapacity, 800);
+        const maxEnergy = Math.min(energyCapacity, 1300);
         switch (role) {
           case "harvester":
             return this.getHarvesterBody(maxEnergy, room);
           case "hauler":
             return Hauler.getBody(maxEnergy);
           case "upgrader":
-            return this.getUpgraderBody(maxEnergy);
+            return this.getUpgraderBody(maxEnergy, room);
           case "builder":
-            return this.getBuilderBody(maxEnergy);
+            return this.getBuilderBody(maxEnergy, room);
           case "scout":
             return Scout.getBodyParts(maxEnergy);
           default:

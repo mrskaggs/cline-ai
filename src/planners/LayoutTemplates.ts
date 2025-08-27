@@ -68,41 +68,42 @@ export class LayoutTemplates {
   }
 
   /**
-   * RCL 2 Template - Add extensions around spawn
+   * RCL 2 Template - Add extensions around spawn (L-shaped pattern for spawn accessibility)
    */
   private static getRCL2Template(): LayoutTemplate {
     return {
-      name: 'RCL2_Extensions',
+      name: 'RCL2_Extensions_SpawnSafe',
       rcl: 2,
       centerOffset: { x: 0, y: 0 },
       buildings: [
-        // 5 extensions in a cross pattern around spawn
-        { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 0 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: 0 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: -1 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: 1 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: -1 }, priority: 3 }
+        // 5 extensions in L-shaped pattern - maintains spawn accessibility
+        // Only blocks 2 of 8 spawn positions, leaves 6 free for excellent spawn efficiency
+        { structureType: STRUCTURE_EXTENSION, offset: { x: -2, y: 0 }, priority: 2 },  // West 2 tiles
+        { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: -1 }, priority: 2 }, // Northwest (blocks spawn)
+        { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: -2 }, priority: 2 },  // North 2 tiles
+        { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: -1 }, priority: 3 },  // Northeast (blocks spawn)
+        { structureType: STRUCTURE_EXTENSION, offset: { x: 2, y: 0 }, priority: 3 }    // East 2 tiles
       ]
     };
   }
 
   /**
-   * RCL 3 Template - Add tower and more extensions (containers now handled by dynamic placement)
+   * RCL 3 Template - Add tower and more extensions (spawn-safe placement)
    */
   private static getRCL3Template(): LayoutTemplate {
     return {
-      name: 'RCL3_Tower_Extensions',
+      name: 'RCL3_Tower_Extensions_SpawnSafe',
       rcl: 3,
       centerOffset: { x: 0, y: 0 },
       buildings: [
-        // Tower for defense
-        { structureType: STRUCTURE_TOWER, offset: { x: 2, y: 0 }, priority: 1 },
-        // Additional extensions (5 more for total of 10)
-        { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: -1 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 1 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: 1 }, priority: 2 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: -2, y: 0 }, priority: 3 },
-        { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: -2 }, priority: 3 }
+        // Tower for defense - positioned away from spawn
+        { structureType: STRUCTURE_TOWER, offset: { x: 0, y: 2 }, priority: 1 },
+        // Additional extensions (5 more for total of 10) - avoid spawn positions
+        { structureType: STRUCTURE_EXTENSION, offset: { x: -1, y: 1 }, priority: 2 },  // Southwest (blocks spawn)
+        { structureType: STRUCTURE_EXTENSION, offset: { x: 1, y: 1 }, priority: 2 },   // Southeast (blocks spawn)
+        { structureType: STRUCTURE_EXTENSION, offset: { x: -2, y: -1 }, priority: 3 }, // West-northwest
+        { structureType: STRUCTURE_EXTENSION, offset: { x: 2, y: -1 }, priority: 3 },  // East-northeast
+        { structureType: STRUCTURE_EXTENSION, offset: { x: 0, y: 3 }, priority: 3 }    // South 3 tiles
       ]
     };
   }
@@ -327,7 +328,7 @@ export class LayoutTemplates {
     else if (rcl >= 3) limits[STRUCTURE_TOWER] = 1;
     else limits[STRUCTURE_TOWER] = 0;
     
-    limits[STRUCTURE_CONTAINER] = rcl >= 3 ? 5 : 0;
+    limits[STRUCTURE_CONTAINER] = 5;
     limits[STRUCTURE_STORAGE] = rcl >= 4 ? 1 : 0;
     limits[STRUCTURE_LINK] = rcl >= 5 ? Math.min(Math.floor((rcl - 4) * 2), 6) : 0;
     limits[STRUCTURE_TERMINAL] = rcl >= 6 ? 1 : 0;

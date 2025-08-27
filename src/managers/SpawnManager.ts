@@ -169,9 +169,9 @@ export class SpawnManager {
       case 'hauler':
         return Hauler.getBody(energyAvailable);
       case 'upgrader':
-        return this.getUpgraderBody(energyAvailable);
+        return this.getUpgraderBody(energyAvailable, room);
       case 'builder':
-        return this.getBuilderBody(energyAvailable);
+        return this.getBuilderBody(energyAvailable, room);
       case 'scout':
         return Scout.getBodyParts(energyAvailable);
       default:
@@ -182,6 +182,10 @@ export class SpawnManager {
 
   private getHarvesterBody(energyAvailable: number, room: Room): BodyPartConstant[] {
     const rcl = room.controller ? room.controller.level : 1;
+    const energyCapacity = room.energyCapacityAvailable;
+    
+    // Use full energy capacity when available, otherwise use what we have
+    const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
     
     // Check if we have containers (indicates stationary mining at RCL 3+)
     const hasContainers = rcl >= 3 && room.find(FIND_STRUCTURES, {
@@ -190,16 +194,22 @@ export class SpawnManager {
 
     if (hasContainers) {
       // RCL 3+ Stationary Mining: Optimize for maximum WORK parts, minimal CARRY/MOVE
-      if (energyAvailable >= 600) {
-        // Perfect source utilization: 5 WORK = 10 energy/tick (matches source regen)
+      if (targetEnergy >= 1300) {
+        // RCL 4: Perfect utilization - 12 WORK = 24 energy/tick
+        return [WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+      } else if (targetEnergy >= 800) {
+        // RCL 3: Perfect utilization - 7 WORK = 14 energy/tick
+        return [WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+      } else if (targetEnergy >= 600) {
+        // High efficiency: 5 WORK = 10 energy/tick (matches source regen)
         return [WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
-      } else if (energyAvailable >= 500) {
-        // High efficiency: 4 WORK = 8 energy/tick
+      } else if (targetEnergy >= 500) {
+        // Good efficiency: 4 WORK = 8 energy/tick
         return [WORK, WORK, WORK, WORK, CARRY, MOVE];
-      } else if (energyAvailable >= 350) {
-        // Good efficiency: 3 WORK = 6 energy/tick, no movement needed
+      } else if (targetEnergy >= 350) {
+        // Decent efficiency: 3 WORK = 6 energy/tick, no movement needed
         return [WORK, WORK, WORK, CARRY];
-      } else if (energyAvailable >= 300) {
+      } else if (targetEnergy >= 300) {
         // Minimum viable stationary: 3 WORK with movement capability
         return [WORK, WORK, WORK, CARRY, MOVE];
       } else {
@@ -207,13 +217,16 @@ export class SpawnManager {
         return [WORK, CARRY, MOVE];
       }
     } else {
-      // RCL 1-2 Mobile Harvesting: Original logic for mobile harvesters
-      if (energyAvailable >= 400) {
+      // RCL 1-2 Mobile Harvesting: Optimized for perfect energy utilization
+      if (targetEnergy >= 550) {
+        // RCL 2: Perfect utilization - 5 WORK = 10 energy/tick
+        return [WORK, WORK, WORK, WORK, WORK, CARRY, MOVE];
+      } else if (targetEnergy >= 400) {
         return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
-      } else if (energyAvailable >= 300) {
-        // RCL 2 optimization: 3 WORK parts for maximum harvest efficiency
-        return [WORK, WORK, WORK, CARRY, MOVE];
-      } else if (energyAvailable >= 200) {
+      } else if (targetEnergy >= 300) {
+        // RCL 1: Perfect utilization - 2 WORK = 4 energy/tick
+        return [WORK, WORK, CARRY, MOVE];
+      } else if (targetEnergy >= 200) {
         return [WORK, CARRY, MOVE];
       } else {
         // Emergency case - spawn the cheapest possible creep
@@ -222,40 +235,62 @@ export class SpawnManager {
     }
   }
 
-  private getUpgraderBody(energyAvailable: number): BodyPartConstant[] {
-    // RCL 2 Optimized: [WORK, WORK, WORK, CARRY, MOVE] = 300 energy (max upgrade speed)
-    // Basic: [WORK, CARRY, MOVE] = 200 energy
-    // Advanced: [WORK, WORK, WORK, CARRY, CARRY, MOVE] = 500 energy
+  private getUpgraderBody(energyAvailable: number, room: Room): BodyPartConstant[] {
+    const energyCapacity = room.energyCapacityAvailable;
+    
+    // Use full energy capacity when available, otherwise use what we have
+    const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
 
-    if (energyAvailable >= 500) {
+    // Perfect energy utilization for each RCL
+    if (targetEnergy >= 1300) {
+      // RCL 4: Perfect utilization - 10 WORK = 10 energy/tick upgrade
+      return [WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, CARRY, MOVE];
+    } else if (targetEnergy >= 800) {
+      // RCL 3: Perfect utilization - 6 WORK = 6 energy/tick upgrade
+      return [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE];
+    } else if (targetEnergy >= 550) {
+      // RCL 2: Perfect utilization - 4 WORK = 4 energy/tick upgrade
+      return [WORK, WORK, WORK, WORK, CARRY, CARRY, MOVE];
+    } else if (targetEnergy >= 500) {
       return [WORK, WORK, WORK, CARRY, CARRY, MOVE];
-    } else if (energyAvailable >= 400) {
+    } else if (targetEnergy >= 400) {
       return [WORK, WORK, CARRY, CARRY, MOVE];
-    } else if (energyAvailable >= 300) {
-      // RCL 2 optimization: 3 WORK parts for maximum upgrade speed
-      return [WORK, WORK, WORK, CARRY, MOVE];
-    } else if (energyAvailable >= 200) {
+    } else if (targetEnergy >= 300) {
+      // RCL 1: Perfect utilization - 2 WORK = 2 energy/tick upgrade
+      return [WORK, WORK, CARRY, MOVE];
+    } else if (targetEnergy >= 200) {
       return [WORK, CARRY, MOVE];
     } else {
       return [WORK, CARRY, MOVE];
     }
   }
 
-  private getBuilderBody(energyAvailable: number): BodyPartConstant[] {
-    // RCL 2 Optimized: [WORK, WORK, CARRY, CARRY, MOVE] = 300 energy (balanced build/carry)
-    // Basic: [WORK, CARRY, MOVE] = 200 energy
-    // Advanced: [WORK, WORK, CARRY, CARRY, MOVE, MOVE] = 450 energy
+  private getBuilderBody(energyAvailable: number, room: Room): BodyPartConstant[] {
+    const energyCapacity = room.energyCapacityAvailable;
+    
+    // Use full energy capacity when available, otherwise use what we have
+    const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
 
-    if (energyAvailable >= 450) {
+    // Perfect energy utilization for each RCL
+    if (targetEnergy >= 1300) {
+      // RCL 4: Perfect utilization - 6 WORK, 6 CARRY = extremely fast building with massive carry capacity
+      return [WORK, WORK, WORK, WORK, WORK, WORK, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+    } else if (targetEnergy >= 800) {
+      // RCL 3: Perfect utilization - 4 WORK, 4 CARRY = maximum building speed with excellent carry capacity
+      return [WORK, WORK, WORK, WORK, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+    } else if (targetEnergy >= 550) {
+      // RCL 2: Perfect utilization - 3 WORK, 3 CARRY = fast building with good carry capacity
+      return [WORK, WORK, WORK, CARRY, CARRY, CARRY, MOVE, MOVE];
+    } else if (targetEnergy >= 450) {
       return [WORK, WORK, CARRY, CARRY, MOVE, MOVE];
-    } else if (energyAvailable >= 350) {
+    } else if (targetEnergy >= 350) {
       return [WORK, CARRY, CARRY, MOVE, MOVE];
-    } else if (energyAvailable >= 300) {
-      // RCL 2 optimization: 2 WORK, 2 CARRY for balanced build/carry efficiency
+    } else if (targetEnergy >= 300) {
+      // RCL 1: Perfect utilization - 2 WORK, 2 CARRY = balanced build/carry
       return [WORK, WORK, CARRY, CARRY, MOVE];
-    } else if (energyAvailable >= 250) {
+    } else if (targetEnergy >= 250) {
       return [WORK, CARRY, MOVE, MOVE];
-    } else if (energyAvailable >= 200) {
+    } else if (targetEnergy >= 200) {
       return [WORK, CARRY, MOVE];
     } else {
       return [WORK, CARRY, MOVE];
@@ -299,8 +334,8 @@ export class SpawnManager {
 
   private getOptimalCreepBody(role: string, energyCapacity: number, room: Room): BodyPartConstant[] {
     // Get the best possible body for this role given the energy capacity
-    // Cap at reasonable limits to avoid overly expensive creeps
-    const maxEnergy = Math.min(energyCapacity, 800); // Reasonable cap for early game
+    // Allow full RCL 4 energy capacity for perfect utilization
+    const maxEnergy = Math.min(energyCapacity, 1300); // Allow RCL 4 energy capacity
 
     switch (role) {
       case 'harvester':
@@ -308,9 +343,9 @@ export class SpawnManager {
       case 'hauler':
         return Hauler.getBody(maxEnergy);
       case 'upgrader':
-        return this.getUpgraderBody(maxEnergy);
+        return this.getUpgraderBody(maxEnergy, room);
       case 'builder':
-        return this.getBuilderBody(maxEnergy);
+        return this.getBuilderBody(maxEnergy, room);
       case 'scout':
         return Scout.getBodyParts(maxEnergy);
       default:

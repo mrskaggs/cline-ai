@@ -149,16 +149,29 @@ export class StorageManager {
 
     /**
      * Gets optimal energy sources for haulers based on current strategy
+     * FIXED: Excludes controller containers - haulers should only deliver to them, not collect from them
      */
     public static getOptimalEnergySources(room: Room): Structure[] {
         const strategy = this.getEnergyStrategy(room);
         const sources: Structure[] = [];
 
-        // Containers are always good sources
+        // Source containers only (exclude controller containers)
         const containers = room.find(FIND_STRUCTURES, {
-            filter: (structure) => 
-                structure.structureType === STRUCTURE_CONTAINER &&
-                structure.store.energy > 0
+            filter: (structure) => {
+                if (structure.structureType !== STRUCTURE_CONTAINER || structure.store.energy === 0) {
+                    return false;
+                }
+                
+                // Exclude controller containers - haulers should only deliver to them, not take from them
+                if (room.controller) {
+                    const distanceToController = structure.pos.getRangeTo(room.controller);
+                    if (distanceToController <= 3) {
+                        return false; // This is a controller container, skip it
+                    }
+                }
+                
+                return true;
+            }
         });
         sources.push(...containers);
 

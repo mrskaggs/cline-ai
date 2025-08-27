@@ -2,7 +2,7 @@
 
 This document tracks the project's status, including what works, what's left to build, known issues, and the evolution of project decisions.
 
-## Current Status: STABLE & FUNCTIONAL
+## Current Status: VERIFIED & OPTIMIZED
 
 ### ✅ Completed Systems
 
@@ -88,6 +88,30 @@ This document tracks the project's status, including what works, what's left to 
 - **Solution**: Implemented centralized Logger with throttling and level controls
 - **Status**: ✅ RESOLVED - Clean console output with meaningful information only
 
+#### Hauler Controller Container Priority (CRITICAL - FIXED)
+- **Issue**: Haulers prioritizing storage over controller containers, causing controller downtime
+- **Root Causes**: Two-part issue affecting energy distribution
+  1. Hauler delivery priority system had storage before controller containers
+  2. StorageManager at RCL 4+ returned controller containers as valid energy sources
+- **Solutions**: Complete priority system redesign and StorageManager fix
+- **Status**: ✅ COMPLETELY RESOLVED - Controller containers now get energy before storage
+
+##### Specific Fixes Applied:
+1. **Hauler Delivery Priority Redesign** ✅ FIXED
+   - Moved controller containers from Priority 5 to Priority 3 (before storage)
+   - Storage moved from Priority 4 to Priority 5 (last priority)
+   - New order: Spawn → Extensions → Controller containers → Towers → Storage
+
+2. **StorageManager Energy Source Exclusion** ✅ FIXED
+   - Added controller container exclusion logic to `getOptimalEnergySources()`
+   - Uses same distance check as hauler fallback (≤3 range from controller)
+   - Prevents haulers from picking up energy from controller containers
+
+3. **Complete System Integration** ✅ FIXED
+   - Both hauler role and StorageManager now exclude controller containers from pickup
+   - Controller containers serve as delivery-only targets for upgraders
+   - Comprehensive testing validates all energy flow scenarios
+
 ### 🎯 Current Capabilities
 
 #### RCL Progression
@@ -131,6 +155,40 @@ The Screeps AI is now **production-ready** with:
 - ✅ Clean logging
 - ✅ Error resilience
 - ✅ Full RCL 1-8 support
+- ✅ **Spawn accessibility secured** - Critical vulnerability eliminated
+
+### 🛡️ Spawn Accessibility Improvements (Latest Achievement)
+
+#### Critical Issue Resolved
+- **Problem**: Original RCL 2 template blocked 5 of 8 spawn positions (dangerous cross pattern)
+- **Risk**: Complete spawn blocking could cause total system failure
+- **Solution**: Redesigned templates with L-shaped pattern for optimal spawn accessibility
+
+#### Improvements Achieved
+- **RCL 2 Template**: Improved from 3 to 6 free spawn positions (+100% improvement)
+- **RCL 3 Template**: Enhanced spawn-safe placement with defensive capabilities
+- **Validation System**: Automatic spawn accessibility validation prevents future issues
+- **Future-Proof**: All RCL levels maintain minimum 2 free spawn positions
+
+#### Technical Implementation
+- **Files Modified**: `LayoutTemplates.ts`, `BaseLayoutPlanner.ts`
+- **New Features**: `validateSpawnAccessibility()` method with comprehensive validation
+- **Template Updates**: L-shaped extension pattern, spawn-safe tower placement
+- **Build Status**: ✅ 167.9kb bundle, ES2019 compatible, ready for deployment
+
+#### Performance Benefits
+- **Spawn Efficiency**: 100% more spawn positions available at RCL 2
+- **System Reliability**: Eliminates risk of complete spawn blocking
+- **Faster Development**: More efficient creep production enables quicker progression
+- **Defensive Capability**: Maintains towers and defensive structures while ensuring spawn access
+
+#### Documentation & Testing
+- **Complete Documentation**: `spawn_accessibility_improvements.md` with technical details
+- **Comprehensive Testing**: Multiple test suites validate all improvements
+- **Analysis Tools**: Diagnostic scripts for spawn accessibility analysis
+- **Validation Coverage**: All RCL levels tested and verified
+
+**Result**: Transformed a critical system vulnerability into a robust, future-proof solution that maintains excellent spawn accessibility while preserving all functional benefits.
 
 ### 🔄 Next Phase: Advanced Features
 

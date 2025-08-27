@@ -31,10 +31,23 @@ export class Hauler {
 
   /**
    * Collect energy from containers, storage, or dropped resources
+   * PRIORITY 1: Dropped energy (prevents decay)
    * Uses StorageManager for optimal source selection based on room strategy
    */
   private static collectEnergy(creep: Creep): void {
-    // Try StorageManager first for RCL 4+ rooms with storage
+    // Priority 1: Dropped energy (immediate pickup to prevent decay)
+    const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
+      filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
+    });
+
+    if (droppedEnergy) {
+      if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
+        creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: '#00ff00' } });
+      }
+      return;
+    }
+
+    // Priority 2: Try StorageManager for RCL 4+ rooms with storage
     if (creep.room.controller && creep.room.controller.level >= 4) {
       try {
         const optimalSources = StorageManager.getOptimalEnergySources(creep.room);
@@ -54,7 +67,7 @@ export class Hauler {
               energyAmount = structure.store[RESOURCE_ENERGY] || 0;
               distance = creep.pos.getRangeTo(structure);
             } 
-            // Check if it's a dropped resource
+            // Check if it's a dropped resource (shouldn't happen here since we check dropped energy first)
             else if ('resourceType' in source && 'amount' in source) {
               const resource = source as unknown as Resource;
               energyAmount = resource.amount;
@@ -94,8 +107,7 @@ export class Hauler {
       }
     }
 
-    // Fallback: Look for source containers only (exclude controller containers)
-    // Priority 1: Containers near sources (primary energy collection)
+    // Priority 3: Source containers (fallback for RCL 3 or when StorageManager fails)
     const sourceContainers = creep.room.find(FIND_STRUCTURES, {
       filter: (structure) => {
         if (structure.structureType !== STRUCTURE_CONTAINER || structure.store[RESOURCE_ENERGY] === 0) {
@@ -124,24 +136,13 @@ export class Hauler {
       }
     }
 
-    // Priority 2: Dropped energy
-    const droppedEnergy = creep.pos.findClosestByPath(FIND_DROPPED_RESOURCES, {
-      filter: (resource) => resource.resourceType === RESOURCE_ENERGY && resource.amount > 50
-    });
-
-    if (droppedEnergy) {
-      if (creep.pickup(droppedEnergy) === ERR_NOT_IN_RANGE) {
-        creep.moveTo(droppedEnergy, { visualizePathStyle: { stroke: '#ffaa00' } });
-      }
-      return;
-    }
-
     // No energy sources found - move to center and wait
     creep.moveTo(25, 25);
   }
 
   /**
-   * Deliver energy to spawn, extensions, towers, or storage
+   * Deliver energy to spawn, extensions, towers, controller containers, then storage
+   * FIXED: Controller containers now prioritized BEFORE storage to ensure upgraders get energy
    */
   private static deliverEnergy(creep: Creep): void {
     // Priority 1: Spawn (critical for creep production)
@@ -174,34 +175,7 @@ export class Hauler {
       }
     }
 
-    // Priority 3: Towers (for defense)
-    const towers = creep.room.find(FIND_MY_STRUCTURES, {
-      filter: (structure) => {
-        return structure.structureType === STRUCTURE_TOWER &&
-               structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
-      }
-    }) as StructureTower[];
-
-    if (towers.length > 0) {
-      const targetTower = creep.pos.findClosestByPath(towers);
-      if (targetTower) {
-        if (creep.transfer(targetTower, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-          creep.moveTo(targetTower, { visualizePathStyle: { stroke: '#ffffff' } });
-        }
-        return;
-      }
-    }
-
-    // Priority 4: Storage (long-term storage)
-    const storage = creep.room.storage;
-    if (storage && storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
-      if (creep.transfer(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
-        creep.moveTo(storage, { visualizePathStyle: { stroke: '#ffffff' } });
-      }
-      return;
-    }
-
-    // Priority 5: Controller (if upgraders need energy nearby)
+    // Priority 3: Controller containers (MOVED UP - critical for upgraders)
     if (creep.room.controller) {
       // Look for containers near controller
       const controllerContainers = creep.room.controller.pos.findInRange(FIND_STRUCTURES, 3, {
@@ -222,33 +196,68 @@ export class Hauler {
       }
     }
 
+    // Priority 4: Towers (for defense)
+    const towers = creep.room.find(FIND_MY_STRUCTURES, {
+      filter: (structure) => {
+        return structure.structureType === STRUCTURE_TOWER &&
+               structure.store.getFreeCapacity(RESOURCE_ENERGY) > 0;
+      }
+    }) as StructureTower[];
+
+    if (towers.length > 0) {
+      const targetTower = creep.pos.findClosestByPath(towers);
+      if (targetTower) {
+        if (creep.transfer(targetTower, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+          creep.moveTo(targetTower, { visualizePathStyle: { stroke: '#ffffff' } });
+        }
+        return;
+      }
+    }
+
+    // Priority 5: Storage (long-term storage - now AFTER controller containers)
+    const storage = creep.room.storage;
+    if (storage && storage.store.getFreeCapacity(RESOURCE_ENERGY) > 0) {
+      if (creep.transfer(storage, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+        creep.moveTo(storage, { visualizePathStyle: { stroke: '#ffffff' } });
+      }
+      return;
+    }
+
     // No targets found - move to center and wait
     creep.moveTo(25, 25);
   }
 
   /**
    * Get optimal body configuration for hauler based on available energy
+   * Optimized for perfect energy utilization at each RCL
    */
   public static getBody(energyAvailable: number): BodyPartConstant[] {
-    const bodies = [
-      { energy: 200, body: [CARRY, CARRY, MOVE] },                    // 2 carry, 1 move (100 capacity)
-      { energy: 300, body: [CARRY, CARRY, CARRY, MOVE, MOVE] },       // 3 carry, 2 move (150 capacity)
-      { energy: 400, body: [CARRY, CARRY, CARRY, CARRY, MOVE, MOVE] }, // 4 carry, 2 move (200 capacity)
-      { energy: 500, body: [CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] }, // 5 carry, 3 move (250 capacity)
-      { energy: 600, body: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE] }, // 6 carry, 3 move (300 capacity)
-      { energy: 800, body: [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE] } // 8 carry, 4 move (400 capacity)
-    ];
-
-    // Find the best body we can afford
-    for (let i = bodies.length - 1; i >= 0; i--) {
-      const bodyConfig = bodies[i];
-      if (bodyConfig && energyAvailable >= bodyConfig.energy) {
-        return bodyConfig.body;
-      }
+    // Perfect energy utilization for each RCL
+    if (energyAvailable >= 1300) {
+      // RCL 4: Perfect utilization - 22 CARRY = 1100 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE];
+    } else if (energyAvailable >= 800) {
+      // RCL 3: Perfect utilization - 12 CARRY = 600 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE];
+    } else if (energyAvailable >= 550) {
+      // RCL 2: Perfect utilization - 8 CARRY = 400 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+    } else if (energyAvailable >= 500) {
+      // High efficiency: 7 CARRY = 350 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+    } else if (energyAvailable >= 400) {
+      // Good efficiency: 6 CARRY = 300 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+    } else if (energyAvailable >= 300) {
+      // RCL 1: Reasonable efficiency - 4 CARRY = 200 capacity
+      return [CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+    } else if (energyAvailable >= 200) {
+      // Basic efficiency: 2 CARRY = 100 capacity
+      return [CARRY, CARRY, MOVE];
+    } else {
+      // Emergency fallback
+      return [CARRY, CARRY, MOVE];
     }
-
-    // Fallback to basic body
-    return [CARRY, CARRY, MOVE];
   }
 
   /**
