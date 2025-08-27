@@ -298,38 +298,115 @@ export class SpawnManager {
   }
 
   private shouldWaitForBetterCreep(room: Room, role: string, currentBody: BodyPartConstant[]): boolean {
-    // Don't wait if we have no creeps of this role (emergency spawning)
+    const currentBodyCost = this.calculateBodyCost(currentBody);
+    
+    // Define what constitutes a "cheap" creep (emergency-only bodies)
+    const isEmergencyBody = currentBodyCost <= 250; // 200-250 energy bodies are emergency-only
+    
+    if (isEmergencyBody) {
+      // Only spawn cheap creeps in true emergencies
+      const isEmergency = this.isEmergencySpawning(room, role);
+      if (!isEmergency) {
+        Logger.debug(`Refusing to spawn cheap ${role} (${currentBodyCost} energy) - not an emergency. Waiting for extensions to fill.`, 'SpawnManager');
+        return true; // Wait for better creep
+      }
+    }
+
+    // For non-emergency bodies, use the existing logic
     const existingCreeps = Object.values(Game.creeps).filter(
       creep => creep.memory.homeRoom === room.name && creep.memory.role === role
     );
     
     if (existingCreeps.length === 0) {
-      // Emergency case: spawn immediately if we have no creeps of this role
+      // No creeps of this role - spawn what we can afford
       return false;
     }
 
     // Calculate what body we could build with full energy capacity
     const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable, room);
     const potentialBodyCost = this.calculateBodyCost(potentialBody);
-    const currentBodyCost = this.calculateBodyCost(currentBody);
 
     // Only wait if:
     // 1. The potential body is significantly better (more parts)
     // 2. We have enough capacity to build the better body
-    // 3. We're not at full capacity yet (if at full capacity, spawn what we can afford)
-    // 4. The current body cost is less than what we can afford (room for improvement)
+    // 3. We're not at full capacity yet
+    // 4. The improvement is substantial (at least 100 energy difference)
     const isSignificantlyBetter = potentialBody.length > currentBody.length;
     const canAffordBetter = potentialBodyCost <= room.energyCapacityAvailable;
     const notAtFullCapacity = room.energyAvailable < room.energyCapacityAvailable;
-    const canAffordCurrentBody = currentBodyCost <= room.energyAvailable;
+    const substantialImprovement = potentialBodyCost - currentBodyCost >= 100;
 
-    // If we're at full capacity or the current body is the best we can afford, don't wait
-    if (!notAtFullCapacity || !canAffordCurrentBody) {
+    // If we're at full capacity, spawn what we can afford
+    if (!notAtFullCapacity) {
       return false;
     }
 
-    // Only wait if we can build something significantly better and we're not at capacity
-    return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
+    // Wait if we can build something significantly better
+    return isSignificantlyBetter && canAffordBetter && substantialImprovement;
+  }
+
+  private isEmergencySpawning(room: Room, role: string): boolean {
+    const existingCreeps = Object.values(Game.creeps).filter(
+      creep => creep.memory.homeRoom === room.name && creep.memory.role === role
+    );
+
+    // Define emergency conditions based on role
+    switch (role) {
+      case 'harvester':
+        // Emergency: No harvesters OR all harvesters are dying soon (< 50 ticks to live)
+        const healthyHarvesters = existingCreeps.filter(creep => 
+          !creep.ticksToLive || creep.ticksToLive > 50
+        );
+        return healthyHarvesters.length === 0;
+
+      case 'upgrader':
+        // Emergency: No upgraders AND controller is close to downgrade (< 5000 ticks)
+        if (existingCreeps.length === 0 && room.controller) {
+          const ticksToDowngrade = room.controller.ticksToDowngrade || 0;
+          return ticksToDowngrade < 5000;
+        }
+        return false;
+
+      case 'builder':
+        // Emergency: Critical structures need repair (< 10% health) AND no builders
+        if (existingCreeps.length === 0) {
+          const criticalStructures = room.find(FIND_STRUCTURES, {
+            filter: (structure) => {
+              const healthPercent = structure.hits / structure.hitsMax;
+              return healthPercent < 0.1 && 
+                     structure.structureType !== STRUCTURE_WALL &&
+                     (structure.structureType === STRUCTURE_SPAWN ||
+                      structure.structureType === STRUCTURE_EXTENSION ||
+                      structure.structureType === STRUCTURE_TOWER);
+            }
+          });
+          return criticalStructures.length > 0;
+        }
+        return false;
+
+      case 'hauler':
+        // Emergency: No haulers AND containers are full AND spawn/extensions are empty
+        if (existingCreeps.length === 0) {
+          const containers = room.find(FIND_STRUCTURES, {
+            filter: (s) => s.structureType === STRUCTURE_CONTAINER && 
+                          (s as StructureContainer).store.getFreeCapacity(RESOURCE_ENERGY) < 100
+          });
+          const emptySpawnStructures = room.find(FIND_STRUCTURES, {
+            filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) &&
+                          (s as StructureSpawn | StructureExtension).store.getFreeCapacity(RESOURCE_ENERGY) > 0
+          });
+          return containers.length > 0 && emptySpawnStructures.length > 0;
+        }
+        return false;
+
+      case 'scout':
+        // Scouts are never emergency - they're luxury units
+        return false;
+
+      default:
+        // Conservative: treat unknown roles as non-emergency
+        return false;
+    }
   }
 
   private getOptimalCreepBody(role: string, energyCapacity: number, room: Room): BodyPartConstant[] {

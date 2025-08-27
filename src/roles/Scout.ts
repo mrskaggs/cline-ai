@@ -4,8 +4,10 @@ export interface ScoutMemory {
     role: 'scout';
     targetRoom?: string;
     homeRoom: string;
-    state: 'idle' | 'moving' | 'exploring' | 'returning';
+    state: 'idle' | 'moving' | 'positioning' | 'exploring' | 'returning';
+    positioningStartTick?: number;
     explorationStartTick?: number;
+    arrivalTick?: number;
 }
 
 export class Scout {
@@ -20,22 +22,26 @@ export class Scout {
                 Logger.info(`Scout ${creep.name}: Initialized in ${memory.homeRoom}`);
             }
 
-            // Visual indicator
+            // Visual indicator with enhanced states
             const stateEmoji = {
                 'idle': '💤',
                 'moving': '➡️', 
+                'positioning': '📍',  // NEW: Positioning at room center
                 'exploring': '🔍',
                 'returning': '🏠'
             };
             creep.say(stateEmoji[memory.state]);
 
-            // State machine
+            // Enhanced 5-state machine
             switch (memory.state) {
                 case 'idle':
                     this.handleIdle(creep);
                     break;
                 case 'moving':
                     this.handleMoving(creep);
+                    break;
+                case 'positioning':  // NEW: Critical positioning phase
+                    this.handlePositioning(creep);
                     break;
                 case 'exploring':
                     this.handleExploring(creep);
@@ -52,8 +58,8 @@ export class Scout {
     private static handleIdle(creep: Creep): void {
         const memory = creep.memory as ScoutMemory;
         
-        // Find next room to scout
-        const targetRoom = this.findNextRoom(creep);
+        // Find next room to scout with enhanced selection logic
+        const targetRoom = this.findNextRoomToScout(creep);
         if (!targetRoom) {
             // No rooms to scout, stay idle
             return;
@@ -72,11 +78,11 @@ export class Scout {
             return;
         }
 
-        // If we're in the target room, start exploring
+        // If we're in the target room, start positioning phase
         if (creep.room.name === memory.targetRoom) {
-            memory.state = 'exploring';
-            memory.explorationStartTick = Game.time;
-            Logger.info(`Scout ${creep.name}: Arrived at ${memory.targetRoom}, starting exploration`);
+            memory.state = 'positioning';  // NEW: Go to positioning, not exploring
+            memory.arrivalTick = Game.time;
+            Logger.info(`Scout ${creep.name}: Arrived at ${memory.targetRoom}, starting positioning phase`);
             return;
         }
 
@@ -84,7 +90,7 @@ export class Scout {
         const exitDir = creep.room.findExitTo(memory.targetRoom);
         if (exitDir === ERR_NO_PATH || exitDir === ERR_INVALID_ARGS) {
             Logger.warn(`Scout ${creep.name}: Cannot reach ${memory.targetRoom}, marking as inaccessible`);
-            this.markRoomInaccessible(memory.targetRoom);
+            this.markRoomAsInaccessible(memory.targetRoom);
             memory.state = 'idle';
             delete memory.targetRoom;
             return;
@@ -96,6 +102,42 @@ export class Scout {
         }
     }
 
+    // NEW: Critical positioning phase - move to center and wait for memory stabilization
+    private static handlePositioning(creep: Creep): void {
+        const memory = creep.memory as ScoutMemory;
+        
+        // Initialize positioning timer
+        if (!memory.positioningStartTick) {
+            memory.positioningStartTick = Game.time;
+        }
+
+        // Move to room center (25,25) for optimal visibility
+        const center = new RoomPosition(25, 25, creep.room.name);
+        const distanceToCenter = creep.pos.getRangeTo(center);
+
+        // If not at center, move there
+        if (distanceToCenter > 2) {
+            creep.moveTo(center, { visualizePathStyle: { stroke: '#ffaa00' } });
+            return;
+        }
+
+        // Wait at center for memory systems to stabilize (5-10 ticks)
+        const positioningTime = Game.time - memory.positioningStartTick;
+        const requiredWaitTime = 7; // 7 ticks for memory stabilization
+
+        if (positioningTime < requiredWaitTime) {
+            // Still positioning, wait for memory systems to update
+            Logger.debug(`Scout ${creep.name}: Positioning at center, waiting ${requiredWaitTime - positioningTime} more ticks`);
+            return;
+        }
+
+        // Positioning complete, start exploration
+        memory.state = 'exploring';
+        memory.explorationStartTick = Game.time;
+        delete memory.positioningStartTick;
+        Logger.info(`Scout ${creep.name}: Positioning complete, starting exploration of ${creep.room.name}`);
+    }
+
     private static handleExploring(creep: Creep): void {
         const memory = creep.memory as ScoutMemory;
         
@@ -103,22 +145,26 @@ export class Scout {
             memory.explorationStartTick = Game.time;
         }
 
-        // Explore for 3 ticks to gather intel
+        // Enhanced exploration time (10-15 ticks vs old 3 ticks)
         const explorationTime = Game.time - memory.explorationStartTick;
-        if (explorationTime < 3) {
-            // Move to center for better vision
+        const requiredExplorationTime = 12; // 12 ticks for thorough intelligence gathering
+
+        if (explorationTime < requiredExplorationTime) {
+            // Continue exploring - stay near center for good visibility
             const center = new RoomPosition(25, 25, creep.room.name);
-            if (creep.pos.getRangeTo(center) > 5) {
+            if (creep.pos.getRangeTo(center) > 3) {
                 creep.moveTo(center);
             }
             return;
         }
 
-        // Exploration complete - gather intel and return home
+        // Exploration complete - gather intel and mark as complete
         this.gatherIntel(creep.room);
+        this.markExplorationComplete(creep.room.name);  // NEW: Critical for preventing cycling
+        
         memory.state = 'returning';
         delete memory.explorationStartTick;
-        Logger.info(`Scout ${creep.name}: Completed exploration of ${creep.room.name}`);
+        Logger.info(`Scout ${creep.name}: Completed exploration of ${creep.room.name}, marked as complete`);
     }
 
     private static handleReturning(creep: Creep): void {
@@ -128,6 +174,7 @@ export class Scout {
         if (creep.room.name === memory.homeRoom) {
             memory.state = 'idle';
             delete memory.targetRoom;
+            delete memory.arrivalTick;
             Logger.info(`Scout ${creep.name}: Returned home, mission complete`);
             return;
         }
@@ -145,23 +192,27 @@ export class Scout {
         }
     }
 
-    private static findNextRoom(creep: Creep): string | null {
+    // Enhanced room selection with explorationComplete logic
+    private static findNextRoomToScout(creep: Creep): string | null {
         const exits = Game.map.describeExits(creep.room.name);
         if (!exits) return null;
 
         const adjacentRooms = Object.values(exits);
         
-        // Find rooms that need scouting
+        // Priority 1: Rooms with no memory (highest priority)
         for (const roomName of adjacentRooms) {
             const roomMemory = Memory.rooms[roomName];
-            
-            // Scout if no memory exists
             if (!roomMemory) {
+                Logger.debug(`Scout ${creep.name}: Selected ${roomName} (no memory)`);
                 return roomName;
             }
+        }
 
-            // Scout if no scout data exists
-            if (!roomMemory.scoutData) {
+        // Priority 2: Rooms with incomplete exploration
+        for (const roomName of adjacentRooms) {
+            const roomMemory = Memory.rooms[roomName];
+            if (!roomMemory || !roomMemory.scoutData) {
+                Logger.debug(`Scout ${creep.name}: Selected ${roomName} (no scout data)`);
                 return roomName;
             }
 
@@ -170,14 +221,45 @@ export class Scout {
                 continue;
             }
 
-            // Scout if data is old (>1000 ticks)
-            const age = Game.time - roomMemory.scoutData.lastScouted;
-            if (age > 1000) {
+            // NEW: Check explorationComplete flag
+            if (!roomMemory.scoutData.explorationComplete) {
+                Logger.debug(`Scout ${creep.name}: Selected ${roomName} (incomplete exploration)`);
                 return roomName;
             }
         }
 
+        // Priority 3: Rooms with stale data (>1000 ticks)
+        for (const roomName of adjacentRooms) {
+            const roomMemory = Memory.rooms[roomName];
+            if (!roomMemory || !roomMemory.scoutData) continue;
+
+            if (roomMemory.scoutData.inaccessible) continue;
+
+            const age = Game.time - roomMemory.scoutData.lastScouted;
+            if (age > 1000) {
+                Logger.debug(`Scout ${creep.name}: Selected ${roomName} (stale data, age: ${age})`);
+                return roomName;
+            }
+        }
+
+        Logger.debug(`Scout ${creep.name}: No rooms need scouting`);
         return null; // No rooms need scouting
+    }
+
+    // NEW: Mark room exploration as complete to prevent cycling
+    private static markExplorationComplete(roomName: string): void {
+        if (!Memory.rooms[roomName]) {
+            Logger.error(`Scout: Cannot mark exploration complete - no memory for ${roomName}`);
+            return;
+        }
+
+        if (!Memory.rooms[roomName].scoutData) {
+            Logger.error(`Scout: Cannot mark exploration complete - no scout data for ${roomName}`);
+            return;
+        }
+
+        Memory.rooms[roomName].scoutData!.explorationComplete = true;
+        Logger.info(`Scout: Marked ${roomName} exploration as complete`);
     }
 
     private static gatherIntel(room: Room): void {
@@ -210,10 +292,14 @@ export class Scout {
             const spawns = structures.filter(s => s.structureType === STRUCTURE_SPAWN);
             const towers = structures.filter(s => s.structureType === STRUCTURE_TOWER);
 
-            // Initialize scout data with proper types
+            // Determine room type based on room name pattern
+            const roomType = this.determineRoomType(room.name);
+
+            // Initialize scout data with enhanced intelligence
             roomMemory.scoutData = {
                 lastScouted: Game.time,
-                roomType: 'normal', // Will be determined by room name pattern
+                explorationComplete: false, // Will be set to true after complete exploration
+                roomType: roomType,
                 sources: sources.map(source => ({
                     id: source.id,
                     pos: source.pos,
@@ -224,7 +310,7 @@ export class Scout {
                 structureCount: structures.length,
                 hasSpawn: spawns.length > 0,
                 hasTower: towers.length > 0,
-                remoteScore: this.calculateSimpleScore(sources.length, hostiles.length, hostileStructures.length > 0),
+                remoteScore: this.calculateEnhancedScore(sources.length, hostiles.length, hostileStructures.length > 0, roomType),
                 inaccessible: false
             };
 
@@ -258,7 +344,7 @@ export class Scout {
                 }
             }
 
-            // Populate sources for other systems
+            // Populate sources for system compatibility
             for (const source of sources) {
                 roomMemory.sources[source.id] = {
                     pos: source.pos,
@@ -267,13 +353,13 @@ export class Scout {
                 };
             }
 
-            Logger.info(`Scout: Gathered intel for ${room.name} - Sources: ${sources.length}, Controller: ${!!room.controller}, Hostiles: ${hostiles.length}`);
+            Logger.info(`Scout: Gathered intel for ${room.name} - Type: ${roomType}, Sources: ${sources.length}, Controller: ${!!room.controller}, Hostiles: ${hostiles.length}, Score: ${roomMemory.scoutData.remoteScore}`);
         } catch (error) {
             Logger.error(`Scout: Error gathering intel for ${room.name} - ${error}`);
         }
     }
 
-    private static markRoomInaccessible(roomName: string): void {
+    private static markRoomAsInaccessible(roomName: string): void {
         if (!Memory.rooms[roomName]) {
             Memory.rooms[roomName] = {
                 sources: {},
@@ -285,6 +371,7 @@ export class Scout {
 
         Memory.rooms[roomName].scoutData = {
             lastScouted: Game.time,
+            explorationComplete: true, // Mark as complete to prevent revisiting
             roomType: 'unknown',
             hostileCount: 0,
             hasHostileStructures: false,
@@ -298,16 +385,65 @@ export class Scout {
         Logger.warn(`Scout: Marked ${roomName} as inaccessible`);
     }
 
-    private static calculateSimpleScore(sourceCount: number, hostileCount: number, hasHostileStructures: boolean): number {
-        let score = sourceCount * 30; // Base score from sources
-        score -= hostileCount * 20; // Penalty for hostiles
-        if (hasHostileStructures) score -= 50; // Penalty for hostile structures
+    // Enhanced room type determination
+    private static determineRoomType(roomName: string): 'normal' | 'highway' | 'center' | 'sourcekeeper' | 'unknown' {
+        const match = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+        if (!match || !match[2] || !match[4]) return 'unknown';
+
+        const x = parseInt(match[2]);
+        const y = parseInt(match[4]);
+
+        // Highway rooms (every 10th coordinate)
+        if (x % 10 === 0 || y % 10 === 0) {
+            return 'highway';
+        }
+
+        // Center rooms (5,5 in each sector)
+        if (x % 10 === 5 && y % 10 === 5) {
+            return 'center';
+        }
+
+        // Source keeper rooms (around center rooms)
+        const distFromCenter = Math.max(Math.abs((x % 10) - 5), Math.abs((y % 10) - 5));
+        if (distFromCenter <= 2 && distFromCenter >= 1) {
+            return 'sourcekeeper';
+        }
+
+        return 'normal';
+    }
+
+    // Enhanced scoring system
+    private static calculateEnhancedScore(sourceCount: number, hostileCount: number, hasHostileStructures: boolean, roomType: string): number {
+        let score = sourceCount * 40; // Base score from sources (increased from 30)
+        
+        // Room type modifiers
+        switch (roomType) {
+            case 'normal':
+                score += 20; // Bonus for normal rooms (safest)
+                break;
+            case 'highway':
+                score -= 30; // Penalty for highway rooms (dangerous)
+                break;
+            case 'center':
+                score -= 50; // Penalty for center rooms (very dangerous)
+                break;
+            case 'sourcekeeper':
+                score -= 40; // Penalty for SK rooms (dangerous)
+                break;
+        }
+        
+        // Threat penalties
+        score -= hostileCount * 25; // Penalty for hostiles (increased from 20)
+        if (hasHostileStructures) score -= 60; // Penalty for hostile structures (increased from 50)
+        
         return Math.max(0, score);
     }
 
     public static getBodyParts(energyAvailable: number): BodyPartConstant[] {
-        // Simple scout - just needs to move
-        if (energyAvailable >= 50) {
+        // Enhanced scout body - still minimal but with better movement
+        if (energyAvailable >= 100) {
+            return [MOVE, MOVE]; // Faster movement for better efficiency
+        } else if (energyAvailable >= 50) {
             return [MOVE];
         }
         return [];

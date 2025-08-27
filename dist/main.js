@@ -2979,6 +2979,8 @@ var init_Scout = __esm({
           const stateEmoji = {
             "idle": "\u{1F4A4}",
             "moving": "\u27A1\uFE0F",
+            "positioning": "\u{1F4CD}",
+            // NEW: Positioning at room center
             "exploring": "\u{1F50D}",
             "returning": "\u{1F3E0}"
           };
@@ -2989,6 +2991,9 @@ var init_Scout = __esm({
               break;
             case "moving":
               this.handleMoving(creep);
+              break;
+            case "positioning":
+              this.handlePositioning(creep);
               break;
             case "exploring":
               this.handleExploring(creep);
@@ -3003,7 +3008,7 @@ var init_Scout = __esm({
       }
       static handleIdle(creep) {
         const memory = creep.memory;
-        const targetRoom = this.findNextRoom(creep);
+        const targetRoom = this.findNextRoomToScout(creep);
         if (!targetRoom) {
           return;
         }
@@ -3018,15 +3023,15 @@ var init_Scout = __esm({
           return;
         }
         if (creep.room.name === memory.targetRoom) {
-          memory.state = "exploring";
-          memory.explorationStartTick = Game.time;
-          Logger.info(`Scout ${creep.name}: Arrived at ${memory.targetRoom}, starting exploration`);
+          memory.state = "positioning";
+          memory.arrivalTick = Game.time;
+          Logger.info(`Scout ${creep.name}: Arrived at ${memory.targetRoom}, starting positioning phase`);
           return;
         }
         const exitDir = creep.room.findExitTo(memory.targetRoom);
         if (exitDir === ERR_NO_PATH || exitDir === ERR_INVALID_ARGS) {
           Logger.warn(`Scout ${creep.name}: Cannot reach ${memory.targetRoom}, marking as inaccessible`);
-          this.markRoomInaccessible(memory.targetRoom);
+          this.markRoomAsInaccessible(memory.targetRoom);
           memory.state = "idle";
           delete memory.targetRoom;
           return;
@@ -3036,29 +3041,55 @@ var init_Scout = __esm({
           creep.moveTo(exit, { visualizePathStyle: { stroke: "#00ff00" } });
         }
       }
+      // NEW: Critical positioning phase - move to center and wait for memory stabilization
+      static handlePositioning(creep) {
+        const memory = creep.memory;
+        if (!memory.positioningStartTick) {
+          memory.positioningStartTick = Game.time;
+        }
+        const center = new RoomPosition(25, 25, creep.room.name);
+        const distanceToCenter = creep.pos.getRangeTo(center);
+        if (distanceToCenter > 2) {
+          creep.moveTo(center, { visualizePathStyle: { stroke: "#ffaa00" } });
+          return;
+        }
+        const positioningTime = Game.time - memory.positioningStartTick;
+        const requiredWaitTime = 7;
+        if (positioningTime < requiredWaitTime) {
+          Logger.debug(`Scout ${creep.name}: Positioning at center, waiting ${requiredWaitTime - positioningTime} more ticks`);
+          return;
+        }
+        memory.state = "exploring";
+        memory.explorationStartTick = Game.time;
+        delete memory.positioningStartTick;
+        Logger.info(`Scout ${creep.name}: Positioning complete, starting exploration of ${creep.room.name}`);
+      }
       static handleExploring(creep) {
         const memory = creep.memory;
         if (!memory.explorationStartTick) {
           memory.explorationStartTick = Game.time;
         }
         const explorationTime = Game.time - memory.explorationStartTick;
-        if (explorationTime < 3) {
+        const requiredExplorationTime = 12;
+        if (explorationTime < requiredExplorationTime) {
           const center = new RoomPosition(25, 25, creep.room.name);
-          if (creep.pos.getRangeTo(center) > 5) {
+          if (creep.pos.getRangeTo(center) > 3) {
             creep.moveTo(center);
           }
           return;
         }
         this.gatherIntel(creep.room);
+        this.markExplorationComplete(creep.room.name);
         memory.state = "returning";
         delete memory.explorationStartTick;
-        Logger.info(`Scout ${creep.name}: Completed exploration of ${creep.room.name}`);
+        Logger.info(`Scout ${creep.name}: Completed exploration of ${creep.room.name}, marked as complete`);
       }
       static handleReturning(creep) {
         const memory = creep.memory;
         if (creep.room.name === memory.homeRoom) {
           memory.state = "idle";
           delete memory.targetRoom;
+          delete memory.arrivalTick;
           Logger.info(`Scout ${creep.name}: Returned home, mission complete`);
           return;
         }
@@ -3072,27 +3103,57 @@ var init_Scout = __esm({
           creep.moveTo(exit, { visualizePathStyle: { stroke: "#ffff00" } });
         }
       }
-      static findNextRoom(creep) {
+      // Enhanced room selection with explorationComplete logic
+      static findNextRoomToScout(creep) {
         const exits = Game.map.describeExits(creep.room.name);
         if (!exits) return null;
         const adjacentRooms = Object.values(exits);
         for (const roomName of adjacentRooms) {
           const roomMemory = Memory.rooms[roomName];
           if (!roomMemory) {
+            Logger.debug(`Scout ${creep.name}: Selected ${roomName} (no memory)`);
             return roomName;
           }
-          if (!roomMemory.scoutData) {
+        }
+        for (const roomName of adjacentRooms) {
+          const roomMemory = Memory.rooms[roomName];
+          if (!roomMemory || !roomMemory.scoutData) {
+            Logger.debug(`Scout ${creep.name}: Selected ${roomName} (no scout data)`);
             return roomName;
           }
           if (roomMemory.scoutData.inaccessible) {
             continue;
           }
-          const age = Game.time - roomMemory.scoutData.lastScouted;
-          if (age > 1e3) {
+          if (!roomMemory.scoutData.explorationComplete) {
+            Logger.debug(`Scout ${creep.name}: Selected ${roomName} (incomplete exploration)`);
             return roomName;
           }
         }
+        for (const roomName of adjacentRooms) {
+          const roomMemory = Memory.rooms[roomName];
+          if (!roomMemory || !roomMemory.scoutData) continue;
+          if (roomMemory.scoutData.inaccessible) continue;
+          const age = Game.time - roomMemory.scoutData.lastScouted;
+          if (age > 1e3) {
+            Logger.debug(`Scout ${creep.name}: Selected ${roomName} (stale data, age: ${age})`);
+            return roomName;
+          }
+        }
+        Logger.debug(`Scout ${creep.name}: No rooms need scouting`);
         return null;
+      }
+      // NEW: Mark room exploration as complete to prevent cycling
+      static markExplorationComplete(roomName) {
+        if (!Memory.rooms[roomName]) {
+          Logger.error(`Scout: Cannot mark exploration complete - no memory for ${roomName}`);
+          return;
+        }
+        if (!Memory.rooms[roomName].scoutData) {
+          Logger.error(`Scout: Cannot mark exploration complete - no scout data for ${roomName}`);
+          return;
+        }
+        Memory.rooms[roomName].scoutData.explorationComplete = true;
+        Logger.info(`Scout: Marked ${roomName} exploration as complete`);
       }
       static gatherIntel(room) {
         try {
@@ -3113,10 +3174,12 @@ var init_Scout = __esm({
           const structures = room.find(FIND_STRUCTURES);
           const spawns = structures.filter((s) => s.structureType === STRUCTURE_SPAWN);
           const towers = structures.filter((s) => s.structureType === STRUCTURE_TOWER);
+          const roomType = this.determineRoomType(room.name);
           roomMemory.scoutData = {
             lastScouted: Game.time,
-            roomType: "normal",
-            // Will be determined by room name pattern
+            explorationComplete: false,
+            // Will be set to true after complete exploration
+            roomType,
             sources: sources.map((source) => ({
               id: source.id,
               pos: source.pos,
@@ -3127,7 +3190,7 @@ var init_Scout = __esm({
             structureCount: structures.length,
             hasSpawn: spawns.length > 0,
             hasTower: towers.length > 0,
-            remoteScore: this.calculateSimpleScore(sources.length, hostiles.length, hostileStructures.length > 0),
+            remoteScore: this.calculateEnhancedScore(sources.length, hostiles.length, hostileStructures.length > 0, roomType),
             inaccessible: false
           };
           if (minerals.length > 0 && minerals[0]) {
@@ -3161,12 +3224,12 @@ var init_Scout = __esm({
               lastUpdated: Game.time
             };
           }
-          Logger.info(`Scout: Gathered intel for ${room.name} - Sources: ${sources.length}, Controller: ${!!room.controller}, Hostiles: ${hostiles.length}`);
+          Logger.info(`Scout: Gathered intel for ${room.name} - Type: ${roomType}, Sources: ${sources.length}, Controller: ${!!room.controller}, Hostiles: ${hostiles.length}, Score: ${roomMemory.scoutData.remoteScore}`);
         } catch (error) {
           Logger.error(`Scout: Error gathering intel for ${room.name} - ${error}`);
         }
       }
-      static markRoomInaccessible(roomName) {
+      static markRoomAsInaccessible(roomName) {
         if (!Memory.rooms[roomName]) {
           Memory.rooms[roomName] = {
             sources: {},
@@ -3177,6 +3240,8 @@ var init_Scout = __esm({
         }
         Memory.rooms[roomName].scoutData = {
           lastScouted: Game.time,
+          explorationComplete: true,
+          // Mark as complete to prevent revisiting
           roomType: "unknown",
           hostileCount: 0,
           hasHostileStructures: false,
@@ -3188,14 +3253,49 @@ var init_Scout = __esm({
         };
         Logger.warn(`Scout: Marked ${roomName} as inaccessible`);
       }
-      static calculateSimpleScore(sourceCount, hostileCount, hasHostileStructures) {
-        let score = sourceCount * 30;
-        score -= hostileCount * 20;
-        if (hasHostileStructures) score -= 50;
+      // Enhanced room type determination
+      static determineRoomType(roomName) {
+        const match = roomName.match(/^([WE])(\d+)([NS])(\d+)$/);
+        if (!match || !match[2] || !match[4]) return "unknown";
+        const x = parseInt(match[2]);
+        const y = parseInt(match[4]);
+        if (x % 10 === 0 || y % 10 === 0) {
+          return "highway";
+        }
+        if (x % 10 === 5 && y % 10 === 5) {
+          return "center";
+        }
+        const distFromCenter = Math.max(Math.abs(x % 10 - 5), Math.abs(y % 10 - 5));
+        if (distFromCenter <= 2 && distFromCenter >= 1) {
+          return "sourcekeeper";
+        }
+        return "normal";
+      }
+      // Enhanced scoring system
+      static calculateEnhancedScore(sourceCount, hostileCount, hasHostileStructures, roomType) {
+        let score = sourceCount * 40;
+        switch (roomType) {
+          case "normal":
+            score += 20;
+            break;
+          case "highway":
+            score -= 30;
+            break;
+          case "center":
+            score -= 50;
+            break;
+          case "sourcekeeper":
+            score -= 40;
+            break;
+        }
+        score -= hostileCount * 25;
+        if (hasHostileStructures) score -= 60;
         return Math.max(0, score);
       }
       static getBodyParts(energyAvailable) {
-        if (energyAvailable >= 50) {
+        if (energyAvailable >= 100) {
+          return [MOVE, MOVE];
+        } else if (energyAvailable >= 50) {
           return [MOVE];
         }
         return [];
@@ -3428,6 +3528,15 @@ var init_SpawnManager = __esm({
         }
       }
       shouldWaitForBetterCreep(room, role, currentBody) {
+        const currentBodyCost = this.calculateBodyCost(currentBody);
+        const isEmergencyBody = currentBodyCost <= 250;
+        if (isEmergencyBody) {
+          const isEmergency = this.isEmergencySpawning(room, role);
+          if (!isEmergency) {
+            Logger.debug(`Refusing to spawn cheap ${role} (${currentBodyCost} energy) - not an emergency. Waiting for extensions to fill.`, "SpawnManager");
+            return true;
+          }
+        }
         const existingCreeps = Object.values(Game.creeps).filter(
           (creep) => creep.memory.homeRoom === room.name && creep.memory.role === role
         );
@@ -3436,15 +3545,58 @@ var init_SpawnManager = __esm({
         }
         const potentialBody = this.getOptimalCreepBody(role, room.energyCapacityAvailable, room);
         const potentialBodyCost = this.calculateBodyCost(potentialBody);
-        const currentBodyCost = this.calculateBodyCost(currentBody);
         const isSignificantlyBetter = potentialBody.length > currentBody.length;
         const canAffordBetter = potentialBodyCost <= room.energyCapacityAvailable;
         const notAtFullCapacity = room.energyAvailable < room.energyCapacityAvailable;
-        const canAffordCurrentBody = currentBodyCost <= room.energyAvailable;
-        if (!notAtFullCapacity || !canAffordCurrentBody) {
+        const substantialImprovement = potentialBodyCost - currentBodyCost >= 100;
+        if (!notAtFullCapacity) {
           return false;
         }
-        return isSignificantlyBetter && canAffordBetter && notAtFullCapacity;
+        return isSignificantlyBetter && canAffordBetter && substantialImprovement;
+      }
+      isEmergencySpawning(room, role) {
+        const existingCreeps = Object.values(Game.creeps).filter(
+          (creep) => creep.memory.homeRoom === room.name && creep.memory.role === role
+        );
+        switch (role) {
+          case "harvester":
+            const healthyHarvesters = existingCreeps.filter(
+              (creep) => !creep.ticksToLive || creep.ticksToLive > 50
+            );
+            return healthyHarvesters.length === 0;
+          case "upgrader":
+            if (existingCreeps.length === 0 && room.controller) {
+              const ticksToDowngrade = room.controller.ticksToDowngrade || 0;
+              return ticksToDowngrade < 5e3;
+            }
+            return false;
+          case "builder":
+            if (existingCreeps.length === 0) {
+              const criticalStructures = room.find(FIND_STRUCTURES, {
+                filter: (structure) => {
+                  const healthPercent = structure.hits / structure.hitsMax;
+                  return healthPercent < 0.1 && structure.structureType !== STRUCTURE_WALL && (structure.structureType === STRUCTURE_SPAWN || structure.structureType === STRUCTURE_EXTENSION || structure.structureType === STRUCTURE_TOWER);
+                }
+              });
+              return criticalStructures.length > 0;
+            }
+            return false;
+          case "hauler":
+            if (existingCreeps.length === 0) {
+              const containers = room.find(FIND_STRUCTURES, {
+                filter: (s) => s.structureType === STRUCTURE_CONTAINER && s.store.getFreeCapacity(RESOURCE_ENERGY) < 100
+              });
+              const emptySpawnStructures = room.find(FIND_STRUCTURES, {
+                filter: (s) => (s.structureType === STRUCTURE_SPAWN || s.structureType === STRUCTURE_EXTENSION) && s.store.getFreeCapacity(RESOURCE_ENERGY) > 0
+              });
+              return containers.length > 0 && emptySpawnStructures.length > 0;
+            }
+            return false;
+          case "scout":
+            return false;
+          default:
+            return false;
+        }
       }
       getOptimalCreepBody(role, energyCapacity, room) {
         const maxEnergy = Math.min(energyCapacity, 1300);

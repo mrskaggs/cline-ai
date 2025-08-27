@@ -10,11 +10,15 @@ interface CreepMemory {
   homeRoom: string;
   // Harvester-specific properties
   assignedSource?: Id<Source>;
-  // Scout-specific properties
+  // Scout-specific properties (enhanced for 5-state machine)
   targetRoom?: string;
+  state?: 'idle' | 'moving' | 'positioning' | 'exploring' | 'returning';
+  positioningStartTick?: number;
+  explorationStartTick?: number;
+  arrivalTick?: number;
+  // Legacy support
   scoutingPhase?: 'moving' | 'exploring' | 'returning';
   lastExplored?: number;
-  arrivalTick?: number;
 }
 
 interface RoomMemory {
@@ -148,7 +152,8 @@ interface KeyPositions {
 
 interface ScoutData {
   lastScouted: number;
-  roomType: string;
+  explorationComplete: boolean; // Critical: Prevents room cycling
+  roomType: 'normal' | 'highway' | 'center' | 'sourcekeeper' | 'unknown';
   sources?: {
     id: Id<Source>;
     pos: RoomPosition;
@@ -176,6 +181,5 @@ interface ScoutData {
   hasSpawn: boolean;
   hasTower: boolean;
   remoteScore: number;
-  inaccessible?: boolean;
-  explorationComplete?: boolean;
+  inaccessible: boolean;
 }

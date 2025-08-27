@@ -1,241 +1,137 @@
 # Implementation Plan
 
 ## Overview
-Create a comprehensive building and road planning system that intelligently designs room layouts based on RCL progression, analyzes traffic patterns for optimal road placement, and adapts to unique room terrain while maintaining CPU efficiency.
+Redesign the Scout role system to eliminate room cycling and timing issues by implementing a center-first exploration approach with proper state management and memory synchronization.
 
-The system will implement a hybrid approach combining predefined layout templates with dynamic positioning algorithms. It will start with optimal paths between key structures and refine road networks based on actual creep movement patterns. The planner will calculate complete layouts before placing construction sites, ensuring coordinated development that maximizes efficiency while adapting to each room's unique characteristics.
+The current scout logic suffers from fundamental timing issues where scouts attempt to explore rooms while still moving to optimal positions, creating race conditions with memory updates and room visibility. This causes scouts to cycle between rooms without completing proper intelligence gathering. The solution implements a 5-state machine with a dedicated positioning phase where scouts move to room center and wait for memory systems to stabilize before beginning exploration.
 
 ## Types
-Define comprehensive type system for planning data structures and room layout management.
+Enhanced ScoutMemory interface with positioning state and exploration completion tracking.
 
 ```typescript
-// Planning system types
-interface RoomPlan {
-  roomName: string;
-  rcl: number;
-  lastUpdated: number;
-  buildings: PlannedBuilding[];
-  roads: PlannedRoad[];
-  status: 'planning' | 'ready' | 'building' | 'complete';
-  priority: number;
+export interface ScoutMemory {
+    role: 'scout';
+    targetRoom?: string;
+    homeRoom: string;
+    state: 'idle' | 'moving' | 'positioning' | 'exploring' | 'returning';
+    positioningStartTick?: number;
+    explorationStartTick?: number;
+    arrivalTick?: number;
 }
 
-interface PlannedBuilding {
-  structureType: BuildableStructureConstant;
-  pos: RoomPosition;
-  priority: number;
-  rclRequired: number;
-  placed: boolean;
-  constructionSiteId?: Id<ConstructionSite>;
-  reason: string; // Why this position was chosen
-}
-
-interface PlannedRoad {
-  pos: RoomPosition;
-  priority: number;
-  trafficScore: number;
-  placed: boolean;
-  constructionSiteId?: Id<ConstructionSite>;
-  pathType: 'source' | 'controller' | 'mineral' | 'exit' | 'internal';
-}
-
-interface TrafficData {
-  [key: string]: { // position key "x,y"
-    count: number;
-    lastSeen: number;
-    creepTypes: string[];
-  };
-}
-
-interface LayoutTemplate {
-  name: string;
-  rcl: number;
-  buildings: TemplateBuilding[];
-  centerOffset: { x: number; y: number };
-}
-
-interface TemplateBuilding {
-  structureType: BuildableStructureConstant;
-  offset: { x: number; y: number };
-  priority: number;
-}
-
-// Memory extensions
-interface RoomMemory {
-  plan?: RoomPlan;
-  trafficData?: TrafficData;
-  layoutAnalysis?: {
-    terrain: TerrainAnalysis;
-    keyPositions: KeyPositions;
-    lastAnalyzed: number;
-  };
-}
-
-interface TerrainAnalysis {
-  openSpaces: RoomPosition[];
-  walls: RoomPosition[];
-  swamps: RoomPosition[];
-  exits: RoomPosition[];
-  centralArea: RoomPosition;
-}
-
-interface KeyPositions {
-  spawn: RoomPosition[];
-  sources: RoomPosition[];
-  controller: RoomPosition;
-  mineral: RoomPosition;
-  exits: RoomPosition[];
+interface ScoutData {
+    lastScouted: number;
+    explorationComplete: boolean;  // NEW: Prevents room cycling
+    roomType: 'normal' | 'highway' | 'center' | 'sourcekeeper' | 'unknown';
+    sources?: Array<{
+        id: string;
+        pos: RoomPosition;
+        energyCapacity: number;
+    }>;
+    mineral?: {
+        id: string;
+        pos: RoomPosition;
+        mineralType: MineralConstant;
+        density: number;
+    };
+    controller?: {
+        id: string;
+        pos: RoomPosition;
+        level: number;
+        owner?: string;
+        reservation?: {
+            username: string;
+            ticksToEnd: number;
+        };
+    };
+    hostileCount: number;
+    hasHostileStructures: boolean;
+    structureCount: number;
+    hasSpawn: boolean;
+    hasTower: boolean;
+    remoteScore: number;
+    inaccessible: boolean;
 }
 ```
 
 ## Files
-Create new planning system files and modify existing managers to integrate planning functionality.
-
-**New Files:**
-- `src/planners/BaseLayoutPlanner.ts` - Main building placement logic with template and dynamic systems
-- `src/planners/RoadPlanner.ts` - Road network planning with traffic analysis
-- `src/planners/TerrainAnalyzer.ts` - Room terrain analysis and key position identification
-- `src/planners/LayoutTemplates.ts` - Predefined building layout templates for each RCL
-- `src/utils/PathingUtils.ts` - Pathfinding utilities and cost matrix management
-- `src/utils/TrafficAnalyzer.ts` - Creep movement tracking and traffic pattern analysis
+Complete Scout role rewrite with enhanced state management and timing controls.
 
 **Modified Files:**
-- `src/managers/RoomManager.ts` - Integrate planning system calls and construction site management
-- `src/kernel/Kernel.ts` - Register new planner managers in the execution pipeline
-- `src/types.d.ts` - Add new type definitions for planning system
-- `src/config/settings.ts` - Add planning system configuration options
+- `src/roles/Scout.ts` - Complete rewrite with 5-state machine and positioning phase
+- `src/types.d.ts` - Enhanced ScoutMemory and ScoutData interfaces
+- `src/managers/SpawnManager.ts` - Optional: Enhanced scout spawning logic for multiple scouts
+
+**New Files:**
+- `tests/scout/test_enhanced_scout_system.js` - Comprehensive test suite for new implementation
+- `tests/scout/test_positioning_phase_validation.js` - Specific tests for positioning phase timing
 
 ## Functions
-Define core planning functions with specific responsibilities and integration points.
+Complete Scout class rewrite with enhanced state management and timing controls.
 
-**BaseLayoutPlanner Functions:**
-- `planRoom(room: Room): RoomPlan` - Main planning entry point
-- `analyzeRoomLayout(room: Room): LayoutAnalysis` - Analyze room terrain and existing structures
-- `generateBuildingPlan(room: Room, rcl: number): PlannedBuilding[]` - Create building placement plan
-- `applyTemplate(room: Room, template: LayoutTemplate, anchor: RoomPosition): PlannedBuilding[]` - Apply template layout
-- `optimizeDynamicPlacement(room: Room, buildings: PlannedBuilding[]): PlannedBuilding[]` - Dynamic position optimization
-- `placeConstructionSites(room: Room, plan: RoomPlan): void` - Place construction sites from plan
+**New Functions in Scout class:**
+- `handlePositioning(creep: Creep): void` - NEW: Manages center positioning and waiting phase
+- `isAtRoomCenter(creep: Creep): boolean` - NEW: Validates scout position at room center
+- `shouldStartExploration(creep: Creep): boolean` - NEW: Timing validation for exploration start
+- `findNextRoomToScout(creep: Creep): string | null` - ENHANCED: Implements explorationComplete logic
+- `markExplorationComplete(roomName: string): void` - NEW: Properly marks rooms as fully explored
 
-**RoadPlanner Functions:**
-- `planRoadNetwork(room: Room, buildings: PlannedBuilding[]): PlannedRoad[]` - Plan complete road network
-- `calculateOptimalPaths(room: Room, keyPositions: KeyPositions): RoomPosition[][]` - Calculate base path network
-- `analyzeTrafficPatterns(room: Room): TrafficData` - Analyze creep movement patterns
-- `optimizeRoadPlacement(paths: RoomPosition[][], trafficData: TrafficData): PlannedRoad[]` - Optimize roads based on traffic
-- `updateTrafficData(room: Room): void` - Update traffic tracking data
-
-**TerrainAnalyzer Functions:**
-- `analyzeRoom(room: Room): TerrainAnalysis` - Complete room terrain analysis
-- `findCentralArea(room: Room): RoomPosition` - Find optimal central building area
-- `identifyKeyPositions(room: Room): KeyPositions` - Identify sources, controller, exits, etc.
-- `calculateBuildableArea(room: Room): RoomPosition[]` - Find all buildable positions
+**Modified Functions:**
+- `run(creep: Creep): void` - Enhanced with 5-state machine (idle->moving->positioning->exploring->returning)
+- `handleIdle(creep: Creep): void` - Enhanced room selection with explorationComplete checks
+- `handleMoving(creep: Creep): void` - Enhanced with arrival timing validation
+- `handleExploring(creep: Creep): void` - Enhanced with longer exploration time and completion marking
+- `handleReturning(creep: Creep): void` - Enhanced with proper cleanup
+- `gatherIntel(room: Room): void` - Enhanced intelligence gathering with explorationComplete flag
 
 ## Classes
-Define main planner classes and their integration with existing manager system.
+Scout class complete rewrite with enhanced state management.
 
-**BaseLayoutPlanner Class:**
-- Location: `src/planners/BaseLayoutPlanner.ts`
-- Purpose: Main building placement and layout planning
-- Key Methods: `run()`, `planRoom()`, `executeConstructionPlan()`
-- Integration: Called by RoomManager on cadence (every 50 ticks)
+**Scout Class Modifications:**
+- **State Machine**: Enhanced from 4-state to 5-state machine with positioning phase
+- **Timing Controls**: Added positioning wait time (5-10 ticks) and longer exploration (10-15 ticks)
+- **Memory Management**: Enhanced with explorationComplete flags and proper cleanup
+- **Error Handling**: Robust error boundaries and inaccessible room handling
+- **Room Selection**: Priority-based selection preventing cycling issues
 
-**RoadPlanner Class:**
-- Location: `src/planners/RoadPlanner.ts`
-- Purpose: Road network planning and traffic analysis
-- Key Methods: `run()`, `planRoads()`, `updateTrafficAnalysis()`
-- Integration: Called by RoomManager after building planning
-
-**TrafficAnalyzer Class:**
-- Location: `src/utils/TrafficAnalyzer.ts`
-- Purpose: Track creep movements and analyze traffic patterns
-- Key Methods: `trackCreepMovement()`, `analyzePatterns()`, `getTrafficScore()`
-- Integration: Called every tick by Kernel for active creeps
-
-**Modified RoomManager Class:**
-- Add planner integration: `runPlanners()` method
-- Add construction management: `manageConstruction()` method
-- Add planning cadence control (every 50 ticks for planning, every 10 ticks for construction)
+**Key Implementation Details:**
+- **Positioning Phase**: Scout moves to room center (25,25) and waits 5-10 ticks for memory stabilization
+- **Exploration Completion**: Rooms marked with explorationComplete: true to prevent revisiting
+- **Room Selection Priority**: 1) No memory, 2) Incomplete exploration, 3) Stale data (>1000 ticks)
+- **Visual Feedback**: Enhanced creep speech with positioning indicators (📍 for positioning phase)
 
 ## Dependencies
-Identify required packages and integration requirements.
+No new external dependencies required.
 
-**No New External Dependencies Required**
-- Uses existing Screeps API and TypeScript
-- Leverages existing PathFinder for pathfinding
-- Integrates with current Logger and Settings systems
-
-**Internal Dependencies:**
-- Extends existing Memory interface in `types.d.ts`
-- Uses Settings configuration system
-- Integrates with Logger for debugging and monitoring
-- Uses existing Kernel manager registration system
+All enhancements use existing Screeps API and TypeScript features. The implementation maintains ES2019 compatibility and integrates with existing Logger, Memory, and Game systems.
 
 ## Testing
-Define testing approach and validation strategies.
+Comprehensive test suite validating timing controls and state management.
 
-**Unit Testing Strategy:**
-- Create test files: `tests/planners/BaseLayoutPlanner.test.ts`, `tests/planners/RoadPlanner.test.ts`
-- Mock Screeps API objects (Room, RoomPosition, etc.)
-- Test layout generation algorithms with various room configurations
-- Validate traffic analysis calculations
-- Test template application and dynamic optimization
+**Test Files:**
+- `test_enhanced_scout_system.js` - Complete system integration testing
+- `test_positioning_phase_validation.js` - Positioning phase timing validation
+- `test_room_cycling_prevention.js` - Validates explorationComplete flag system
+- `test_scout_memory_management.js` - Memory cleanup and error handling validation
 
-**Integration Testing:**
-- Test complete planning cycle from room analysis to construction site placement
-- Validate memory usage and CPU performance
-- Test interaction between building and road planning
-- Verify construction site management and priority handling
-
-**Performance Validation:**
-- Monitor CPU usage during planning operations
-- Validate memory efficiency of traffic data storage
-- Test planning cadence impact on overall system performance
-- Ensure graceful degradation under CPU constraints
+**Test Scenarios:**
+- Positioning phase timing (5-10 tick wait at center)
+- Room cycling prevention with explorationComplete flags
+- Memory synchronization during positioning phase
+- Error handling for inaccessible rooms
+- Multiple scout coordination (if implemented)
+- State transition validation for all 5 states
 
 ## Implementation Order
-Define step-by-step implementation sequence to minimize conflicts and ensure successful integration.
+Logical sequence to minimize conflicts and ensure successful integration.
 
-1. **Foundation Setup** (Types and Utilities)
-   - Update `src/types.d.ts` with new planning interfaces
-   - Create `src/utils/PathingUtils.ts` with basic pathfinding utilities
-   - Update `src/config/settings.ts` with planning configuration
-
-2. **Terrain Analysis System**
-   - Implement `src/planners/TerrainAnalyzer.ts`
-   - Create room analysis and key position identification
-   - Test terrain analysis with various room types
-
-3. **Layout Templates System**
-   - Create `src/planners/LayoutTemplates.ts` with RCL-based templates
-   - Implement template application logic
-   - Test template placement in different room configurations
-
-4. **Building Planning Core**
-   - Implement `src/planners/BaseLayoutPlanner.ts`
-   - Create dynamic placement optimization algorithms
-   - Integrate template and dynamic systems
-
-5. **Traffic Analysis System**
-   - Create `src/utils/TrafficAnalyzer.ts`
-   - Implement creep movement tracking
-   - Add traffic pattern analysis algorithms
-
-6. **Road Planning System**
-   - Implement `src/planners/RoadPlanner.ts`
-   - Create optimal path calculation
-   - Integrate traffic-based road optimization
-
-7. **Manager Integration**
-   - Update `src/managers/RoomManager.ts` to integrate planners
-   - Add construction site management logic
-   - Implement planning cadence control
-
-8. **Kernel Integration**
-   - Update `src/kernel/Kernel.ts` to register planners
-   - Add traffic tracking to creep execution loop
-   - Test complete system integration
-
-9. **Testing and Optimization**
-   - Comprehensive testing of all components
-   - Performance optimization and CPU usage validation
-   - Memory usage optimization and cleanup
-   - Final integration testing and bug fixes
+1. **Step 1: Update TypeScript Interfaces** - Enhance ScoutMemory and ScoutData in `src/types.d.ts`
+2. **Step 2: Implement Enhanced Scout Class** - Complete rewrite of `src/roles/Scout.ts` with 5-state machine
+3. **Step 3: Add Positioning Phase Logic** - Implement center movement and waiting mechanics
+4. **Step 4: Implement ExplorationComplete System** - Add room completion tracking and selection logic
+5. **Step 5: Enhance Memory Management** - Proper cleanup and error handling for all edge cases
+6. **Step 6: Create Comprehensive Tests** - Validate all timing controls and state transitions
+7. **Step 7: Integration Testing** - Ensure compatibility with existing SpawnManager and Kernel systems
+8. **Step 8: Performance Validation** - Verify CPU efficiency and memory usage optimization
+9. **Step 9: Deploy and Monitor** - Deploy with enhanced logging and monitor for room cycling elimination
+10. **Step 10: Optional Multi-Scout Enhancement** - If needed, implement multiple scout coordination
