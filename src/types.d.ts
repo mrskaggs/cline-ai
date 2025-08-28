@@ -2,7 +2,7 @@
 
 interface CreepMemory {
   role: string;
-  task?: string;
+  task?: TaskMemory;
   sourceId?: Id<Source>;
   targetId?: Id<Structure> | Id<ConstructionSite> | Id<Creep>;
   working?: boolean;
@@ -182,4 +182,16 @@ interface ScoutData {
   hasTower: boolean;
   remoteScore: number;
   inaccessible: boolean;
+}
+
+// -- Task System Types -- //
+
+interface TaskMemory {
+  taskType: string;
+  target: Id<any> | null;
+  targetPos: { x: number; y: number; roomName: string } | null;
+  priority: number;
+  data: { [key: string]: any };
+  parent: TaskMemory | null;
+  fork: TaskMemory | null;
 }

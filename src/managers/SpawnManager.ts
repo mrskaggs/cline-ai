@@ -1,6 +1,4 @@
 import { Logger } from '../utils/Logger';
-import { Hauler } from '../roles/Hauler';
-import { Scout } from '../roles/Scout';
 
 export class SpawnManager {
   public run(): void {
@@ -41,7 +39,7 @@ export class SpawnManager {
     }
   }
 
-  private calculateRequiredCreeps(room: Room): { [role: string]: number } {
+  public calculateRequiredCreeps(room: Room): { [role: string]: number } {
     const rcl = room.controller ? room.controller.level : 0;
     const sources = room.find(FIND_SOURCES);
     const sourceCount = sources.length;
@@ -107,16 +105,16 @@ export class SpawnManager {
       // Scouts: Intelligence gathering for future expansion
       // Start scouting at RCL 2+ when basic infrastructure is stable
       if (rcl >= 2) {
-        // Only spawn scouts if we have stable economy (enough harvesters and upgraders)
+        // Only spawn scouts if we have basic economy (at least some harvesters and upgraders)
         const currentHarvesters = Object.values(Game.creeps).filter(
           creep => creep.memory.homeRoom === room.name && creep.memory.role === 'harvester'
         ).length;
         const currentUpgraders = Object.values(Game.creeps).filter(
           creep => creep.memory.homeRoom === room.name && creep.memory.role === 'upgrader'
         ).length;
-        
-        // Only spawn scout if we have stable core economy
-        if (currentHarvesters >= sourceCount && currentUpgraders >= 1) {
+
+        // Spawn scout if we have at least 1 harvester and 1 upgrader (less restrictive)
+        if (currentHarvesters >= 1 && currentUpgraders >= 1) {
           requiredCreeps['scout'] = 1; // One scout per room is sufficient
         }
       }
@@ -125,7 +123,7 @@ export class SpawnManager {
     return requiredCreeps;
   }
 
-  private getNextCreepToSpawn(room: Room, required: { [role: string]: number }): { role: string; body: BodyPartConstant[] } | null {
+  public getNextCreepToSpawn(room: Room, required: { [role: string]: number }): { role: string; body: BodyPartConstant[] } | null {
     // Count existing creeps by role
     const creepCounts: { [role: string]: number } = {};
     
@@ -167,13 +165,13 @@ export class SpawnManager {
       case 'harvester':
         return this.getHarvesterBody(energyAvailable, room);
       case 'hauler':
-        return Hauler.getBody(energyAvailable);
+        return this.getHaulerBody(energyAvailable, room);
       case 'upgrader':
         return this.getUpgraderBody(energyAvailable, room);
       case 'builder':
         return this.getBuilderBody(energyAvailable, room);
       case 'scout':
-        return Scout.getBodyParts(energyAvailable);
+        return this.getScoutBody(energyAvailable);
       default:
         Logger.warn(`Unknown role for body generation: ${role}`, 'SpawnManager');
         return [];
@@ -297,8 +295,51 @@ export class SpawnManager {
     }
   }
 
+  private getHaulerBody(energyAvailable: number, room: Room): BodyPartConstant[] {
+    const energyCapacity = room.energyCapacityAvailable;
+    
+    // Use full energy capacity when available, otherwise use what we have
+    const targetEnergy = energyAvailable >= energyCapacity ? energyCapacity : energyAvailable;
+
+    // Perfect energy utilization for haulers - maximize CARRY capacity
+    if (targetEnergy >= 1300) {
+      // RCL 4: Perfect utilization - 22 CARRY, 6 MOVE = 1100 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE, MOVE, MOVE];
+    } else if (targetEnergy >= 800) {
+      // RCL 3: Perfect utilization - 12 CARRY, 4 MOVE = 600 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE, MOVE];
+    } else if (targetEnergy >= 550) {
+      // RCL 2: Good utilization - 8 CARRY, 3 MOVE = 400 capacity
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE, MOVE];
+    } else if (targetEnergy >= 400) {
+      return [CARRY, CARRY, CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+    } else if (targetEnergy >= 300) {
+      return [CARRY, CARRY, CARRY, CARRY, MOVE, MOVE];
+    } else if (targetEnergy >= 200) {
+      return [CARRY, CARRY, MOVE, MOVE];
+    } else {
+      return [CARRY, MOVE];
+    }
+  }
+
+  private getScoutBody(energyAvailable: number): BodyPartConstant[] {
+    // Scouts are intentionally minimal - just need to move around
+    if (energyAvailable >= 100) {
+      return [MOVE, MOVE]; // Fast movement for exploration
+    } else if (energyAvailable >= 50) {
+      return [MOVE]; // Minimal scout
+    } else {
+      return []; // Can't afford even a basic scout
+    }
+  }
+
   private shouldWaitForBetterCreep(room: Room, role: string, currentBody: BodyPartConstant[]): boolean {
     const currentBodyCost = this.calculateBodyCost(currentBody);
+    
+    // Special case: Scouts are intentionally cheap units and should always spawn when needed
+    if (role === 'scout') {
+      return false; // Never wait for better scout - they're designed to be minimal
+    }
     
     // Define what constitutes a "cheap" creep (emergency-only bodies)
     const isEmergencyBody = currentBodyCost <= 250; // 200-250 energy bodies are emergency-only
@@ -418,13 +459,13 @@ export class SpawnManager {
       case 'harvester':
         return this.getHarvesterBody(maxEnergy, room);
       case 'hauler':
-        return Hauler.getBody(maxEnergy);
+        return this.getHaulerBody(maxEnergy, room);
       case 'upgrader':
         return this.getUpgraderBody(maxEnergy, room);
       case 'builder':
         return this.getBuilderBody(maxEnergy, room);
       case 'scout':
-        return Scout.getBodyParts(maxEnergy);
+        return this.getScoutBody(maxEnergy);
       default:
         return [];
     }

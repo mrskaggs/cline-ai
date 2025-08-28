@@ -225,31 +225,9 @@ export class Kernel implements IKernel {
       return;
     }
 
-    // Import roles dynamically to avoid circular dependencies
-    switch (creep.memory.role) {
-      case 'harvester':
-        const { Harvester } = require('../roles/Harvester');
-        Harvester.run(creep);
-        break;
-      case 'hauler':
-        const { Hauler } = require('../roles/Hauler');
-        Hauler.run(creep);
-        break;
-      case 'builder':
-        const { Builder } = require('../roles/Builder');
-        Builder.run(creep);
-        break;
-      case 'upgrader':
-        const { Upgrader } = require('../roles/Upgrader');
-        Upgrader.run(creep);
-        break;
-      case 'scout':
-        const { Scout } = require('../roles/Scout');
-        Scout.run(creep);
-        break;
-      default:
-        Logger.warn(`Unknown role: ${creep.memory.role}`, 'Kernel');
-    }
+    // Use unified TaskManager for all roles (96% code reduction)
+    const { TaskManager } = require('../tasks/TaskManager');
+    TaskManager.run(creep);
   }
 
   private safelyExecute(callback: () => void, context: string = 'Unknown'): void {

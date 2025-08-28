@@ -1,20 +1,31 @@
 import { Kernel } from './kernel/Kernel';
-// Import all roles to ensure they're included in the build
-import { Scout } from './roles/Scout';
-import { Hauler } from './roles/Hauler';
-import { Builder } from './roles/Builder';
-import { Upgrader } from './roles/Upgrader';
-import { Harvester } from './roles/Harvester';
+import { SpawnManager } from './managers/SpawnManager';
+// Import task system to ensure it's included in the build
+import { Task } from './tasks/Task';
+import { TaskBuild } from './tasks/TaskBuild';
+import { TaskRepair } from './tasks/TaskRepair';
+import { TaskWithdraw } from './tasks/TaskWithdraw';
+import { TaskPickup } from './tasks/TaskPickup';
+import { TaskTransfer } from './tasks/TaskTransfer';
+import { TaskUpgrade } from './tasks/TaskUpgrade';
+import { TaskHarvest } from './tasks/TaskHarvest';
+import { TaskGoToRoom } from './tasks/TaskGoToRoom';
+import { TaskManager } from './tasks/TaskManager';
 
 declare const global: NodeJS.Global & { kernel?: Kernel };
 
-// Ensure all role classes are available (prevents tree-shaking)
-const ROLE_CLASSES = {
-  Scout,
-  Hauler,
-  Builder,
-  Upgrader,
-  Harvester
+// Ensure all task classes are available (prevents tree-shaking)
+const TASK_CLASSES = {
+  Task,
+  TaskBuild,
+  TaskRepair,
+  TaskWithdraw,
+  TaskPickup,
+  TaskTransfer,
+  TaskUpgrade,
+  TaskHarvest,
+  TaskGoToRoom,
+  TaskManager
 };
 
 // Main game loop entry point
@@ -27,5 +38,5 @@ export function loop(): void {
   global.kernel.run();
 }
 
-// Export role classes for dynamic loading
-export { ROLE_CLASSES };
+// Export task system for dynamic loading
+export { TASK_CLASSES, SpawnManager };
